@@ -1,0 +1,8 @@
+Baseline Document Setup --> 1-2 
+N8N Basics & Web Scraping  --> 3-5 
+Vectorization Workflow --> 6-8 
+Diff Detection Logic --> 9-10 
+Build the Web UI --> 11-13
+MCP Fundamentals --> 14 - 15 
+SharePoint MCP Implementation --> 16-18 
+End-to-End Testing & Demo Prep --> 19-20 

@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_FORWARD_HEADERS=true
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      # Set in project-root .env (see .env.example). Required for Bedrock signing in the workflow.
+      - N8N_AWS_ACCESS_KEY_ID=${N8N_AWS_ACCESS_KEY_ID}
+      - N8N_AWS_SECRET_ACCESS_KEY=${N8N_AWS_SECRET_ACCESS_KEY}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      # Optional: Add an encryption key for your credentials
+      # - N8N_ENCRYPTION_KEY=your_secret_key_here
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - qdrant
+
+volumes:
+  n8n_data:
+  qdrant_data:

@@ -1,0 +1,36 @@
+Use-case1
+Regulatory change monitoring (agentic RAG)
+Automate tracking of regulatory changes across ~700+ gaming jurisdictions (NGCB, NY Gaming, Australia, etc.). Currently a manual daily effort. An agentic scheduler (e.g. N8N) scrapes regulatory websites periodically (every 15–30 days), detects diffs, and surfaces changes to the compliance team. Human-in-the-loop review before syncing to SharePoint. Estimated scope: ~800 jurisdiction websites.
+
+
+Phase 1
+Baseline document setup Start here
+Download statutes & regulations from NGCB (Nevada) and gaming.ny.gov (New York). Create edited/modified versions to simulate regulatory changes. These form your ground truth for diff detection.
+Phase 2
+Scheduler + scraper (N8N)
+Set up N8N workflow to scrape target URLs on a 15–30 day schedule. Embed scraped content as vectors. On each run, compare new embeddings against stored baseline and flag sections that changed.
+Phase 3
+Change detection & diff display
+Build a simple web UI showing: jurisdiction name, regulation section changed, previous text vs new text, detected-on date. Human reviewer approves or dismisses each change.
+Phase 4
+SharePoint integration (MCP)
+On approval, use SharePoint MCP tools to push updated regulatory content directly into the relevant SharePoint document/folder. Avoids custom API build. Expand to more jurisdictions once baseline is validated.
+Scale
+Expand to 800+ jurisdictions + sales signals
+Add remaining jurisdiction URLs. Optionally add a "new market entrant" node — scrape manufacturer/competitor sites and surface sales intelligence (e.g. Aristocrat entering iGaming). Treat as a modular agentic node.
+
+The agreed POC (Regulatory Change Monitor) is the right first move for a few reasons. First, all the source data is publicly available — Nevada Gaming Control Board and NY Gaming websites — so you don't need any access to GLI's internal systems to build it. Second, it's easy to demo: just take a downloaded regulation, change a few words, run it through the system, and show that it catches the difference. Third, it solves a genuinely painful daily manual task for the compliance team, which makes the value immediately obvious to leadership.
+On the POC itself, the proposed architecture is:
+
+N8N as the scheduler/orchestrator — runs on a cadence, scrapes regulatory sites, compares content against the stored baseline
+Vector embeddings for the diff detection — new content gets embedded and compared semantically, not just character-by-character
+A simple web UI where compliance staff see what changed, review it, and approve
+SharePoint MCP to push approved updates directly into their document store — no custom API needed
+
+Use-Case2
+Regulatory letter translation tool
+Context-aware English-to-Spanish (and other languages) translation for gaming compliance letters. Gaming terminology is highly specific — game names, scores, and signatures must remain unchanged (static content), while regulatory language is translated (dynamic content). A data dictionary built from past translated letters serves as the translation memory/context.
+
+Use-Case 3
+Compliance & standards chatbot (internal RAG)
+Employees can ask natural-language questions like "I'm testing a 2-level progressive game with bonuses for Nevada — what should I do?" The system draws from four knowledge layers: regulatory websites, GLI standards (GLI-11, GLI-13, GLI-19), internal SharePoint docs (check-offs/clauses), and translated test artifacts. Indexed by product type (Lottery, iLottery, iGaming, VLT, Hoppers). Target accuracy: 90%+.
