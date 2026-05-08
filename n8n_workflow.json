@@ -72,7 +72,7 @@
             {
               "id": "a1",
               "name": "documentUrl",
-              "value": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/e5f478ac7bd82405b0b1a8ed0862e8316ddc68eb/regulation-14-as-of-02-26.pdf",
+              "value": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/regulation-14-as-of-02-26.pdf",
               "type": "string"
             },
             {

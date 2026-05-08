@@ -20,6 +20,9 @@ Restart the container for changes to take effect:
 
 https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/e5f478ac7bd82405b0b1a8ed0862e8316ddc68eb/regulation-14-as-of-02-26.pdf
 
+https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/regulation-14-as-of-02-26.pdf
+https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/web-site-report-batavia-downs-casino.pdf
+
 
 
 curl -X PUT http://localhost:6333/collections/regulatory_docs \

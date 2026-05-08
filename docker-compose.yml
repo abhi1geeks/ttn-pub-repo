@@ -29,6 +29,8 @@ services:
       # Set in project-root .env (see .env.example). Required for Bedrock signing in the workflow.
       - N8N_AWS_ACCESS_KEY_ID=${N8N_AWS_ACCESS_KEY_ID}
       - N8N_AWS_SECRET_ACCESS_KEY=${N8N_AWS_SECRET_ACCESS_KEY}
+      # Optional: only for temporary STS/SSO/assumed-role credentials
+      - N8N_AWS_SESSION_TOKEN=${N8N_AWS_SESSION_TOKEN}
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       # Optional: Add an encryption key for your credentials
       # - N8N_ENCRYPTION_KEY=your_secret_key_here
