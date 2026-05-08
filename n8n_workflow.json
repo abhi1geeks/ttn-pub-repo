@@ -587,7 +587,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Set Config').first().json.qdrantUrl }}/collections/{{ $('Set Config').first().json.changeLogCollection }}/points/scroll",
+        "url": "=http://qdrant:6333/collections/regulatory_change_log/points/scroll",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  limit: 50,\n  with_payload: true,\n  with_vector: false\n}) }}",
@@ -670,7 +670,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Set Config').first().json.qdrantUrl }}/collections/{{ $('Set Config').first().json.changeLogCollection }}/points/payload?wait=true",
+        "url": "=http://qdrant:6333/collections/regulatory_change_log/points/payload?wait=true",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  points: [$json.id],\n  payload: {\n    metadata: {\n      review: {\n        status: $json.status,\n        at: $json.at\n      }\n    }\n  }\n}) }}",

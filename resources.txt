@@ -1,3 +1,23 @@
 Nevada Gaming Commission and the Nevada Gaming Control Board (nv.gov)
 https://www.gaming.nv.gov/regulations/gaming-statutes-regulations/
 
+
+
+
+Demo questions (copy/paste)
+Change monitoring (the “wow”)
+“What changed since the last run? Quote the change-log excerpt and summarize in 5 bullets.”
+“Show the latest change-log excerpt and list the top 3 compliance impacts (only from the excerpt).”
+“How many chunks changed in the last update? Quote the change-log summary lines.”
+“Using only the change-log excerpt, summarize the changes in 5 bullets. If the excerpt doesn’t clearly indicate a change type, say ‘not specified’.”
+Q&A on the latest regulation (RAG)
+“Find excerpts mentioning ‘license’ (or ‘licensing’). Quote them and summarize.”
+“List up to 5 obligations using ‘must’ or ‘shall’, with quotes.”
+“Find excerpts mentioning ‘approval’ or ‘application’. Quote and summarize the procedure.”
+“What definitions are included (look for ‘means’ / ‘defined’)? Quote 3 examples.”
+“Summarize the section that mentions ‘independent testing laboratories’. Quote the excerpt.”
+UI / Human-in-the-loop (Phase 3)
+After approving/dismissing an item in the review page:
+
+“What is the review status of the latest change log? Quote the excerpt including the review status if present.”
+“Show pending (unreviewed) change logs and summarize what needs review.”
