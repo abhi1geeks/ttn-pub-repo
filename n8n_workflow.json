@@ -807,6 +807,11 @@
             "node": "Qdrant Vector Store (Tool)",
             "type": "ai_embedding",
             "index": 0
+          },
+          {
+            "node": "Qdrant Change Log (Tool)",
+            "type": "ai_embedding",
+            "index": 0
           }
         ]
       ]
