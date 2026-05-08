@@ -35,6 +35,16 @@ curl -X PUT http://localhost:6333/collections/regulatory_docs/index \
      -d '{"field_name":"metadata.documentUrl","field_schema":"keyword"}'
 
 
+Change-log collection (optional, for "what changed?" chat)
+
+This workflow can store a short per-run change summary in a second Qdrant collection.
+Create it once (same vector size as your embedding model, default 1024):
+
+curl -X PUT http://localhost:6333/collections/regulatory_change_log \
+     -H 'Content-Type: application/json' \
+     -d '{"vectors":{"size":1024,"distance":"Cosine"}}'
+
+
 
 git checkout main
 git reset --hard checkpoint/demo-ready

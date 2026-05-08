@@ -116,6 +116,12 @@
               "name": "chunkOverlap",
               "value": 200,
               "type": "number"
+            },
+            {
+              "id": "a9",
+              "name": "changeLogCollection",
+              "value": "regulatory_change_log",
+              "type": "string"
             }
           ]
         },
@@ -207,6 +213,120 @@
       "typeVersion": 2,
       "position": [
         1024,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ Number($json.summary.newChunks) + Number($json.summary.removedChunks) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d7f4f6a9-2d5d-4a3a-8f76-2d2a3d0b8a01",
+      "name": "If: Any Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nconst cfg = $('Set Config').first().json;\nconst { summary, toInsert, toDeleteIds, versionId, documentUrl, documentHash } = $input.first().json;\n\nfunction clip(t, max = 600) {\n  const s = (t || '').toString().replace(/\\s+/g, ' ').trim();\n  if (s.length <= max) return s;\n  return s.slice(0, max).trimEnd() + '…';\n}\n\nconst addedSnippets = (toInsert || []).slice(0, 8).map((c, i) => {\n  const idx = c.chunkIndex ?? i;\n  return `- [chunk ${idx}] ${clip(c.chunkText, 500)}`;\n});\n\nconst changeSummaryText = [\n  `Regulatory change detected for: ${documentUrl}`,\n  `Detected at: ${versionId}`,\n  `Document hash: ${documentHash}`,\n  ``,\n  `Summary:`,\n  `- New/changed chunks: ${summary.newChunks}`,\n  `- Removed chunks: ${summary.removedChunks}`,\n  `- Total chunks: ${summary.totalChunks}`,\n  ``,\n  `New/changed excerpts (sample):`,\n  ...(addedSnippets.length ? addedSnippets : ['- (no new excerpts captured)']),\n  ``,\n  `Removed chunk IDs (count): ${Array.isArray(toDeleteIds) ? toDeleteIds.length : 0}`,\n].join('\\n');\n\nconst idSource = `${documentUrl}::${versionId}::change-log`;\nconst pointId = crypto.createHash('sha1').update(idSource).digest('hex').slice(0, 32);\n\nreturn [{\n  json: {\n    pointId,\n    chunkText: changeSummaryText,\n    metadata: {\n      documentUrl,\n      documentHash,\n      versionId,\n      changes: summary,\n    }\n  }\n}];\n"
+      },
+      "id": "f2b4e9b1-4c54-4a9b-9d67-0d68aa0fd2bd",
+      "name": "Build Change Log Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        848
+      ],
+      "notes": "Creates a human-friendly change summary and stores it as an embedded Qdrant point in the change-log collection."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Reuse the Bedrock SigV4 signer logic by delegating to the existing node.\n// This node exists so the change-log branch can sign/embed independently.\n//\n// We intentionally duplicate the signer code here to keep the workflow self-contained.\nconst crypto = require('crypto');\n\nconst cfg = $('Set Config').first().json;\nconst region = cfg.awsRegion;\nconst modelId = cfg.embedModelId;\n\nconst accessKeyId = $env.N8N_AWS_ACCESS_KEY_ID;\nconst secretAccessKey = $env.N8N_AWS_SECRET_ACCESS_KEY;\nconst rawSessionToken = $env.N8N_AWS_SESSION_TOKEN;\n\nfunction normalizeSessionToken(raw) {\n  if (raw == null || typeof raw !== 'string') return '';\n  const t = raw.trim();\n  if (!t) return '';\n  const lower = t.toLowerCase();\n  if (lower === 'your_session_token' || lower === 'optional' || lower === 'placeholder' || lower === 'none' || lower === 'null' || lower === 'undefined') return '';\n  if (t.length < 50) return '';\n  return t;\n}\n\nconst sessionToken = normalizeSessionToken(rawSessionToken);\n\nif (!accessKeyId || !secretAccessKey) {\n  throw new Error('Missing AWS credentials in env.');\n}\n\nconst host = `bedrock-runtime.${region}.amazonaws.com`;\nconst service = 'bedrock';\nconst method = 'POST';\nconst canonicalUri = `/model/${encodeURIComponent(modelId)}/invoke`;\n\nconst body = JSON.stringify({\n  inputText: $json.chunkText,\n  dimensions: cfg.embedDimensions,\n  normalize: true,\n});\n\nconst sha256Hex = (data) => crypto.createHash('sha256').update(data, 'utf8').digest('hex');\nconst hmac = (key, msg) => crypto.createHmac('sha256', key).update(msg, 'utf8').digest();\n\nconst amzDate = new Date().toISOString().replace(/[:-]|\\.\\d{3}/g, '');\nconst dateStamp = amzDate.slice(0, 8);\nconst payloadHash = sha256Hex(body);\n\nconst headersToSign = {\n  host,\n  'content-type': 'application/json',\n  accept: 'application/json',\n  'x-amz-date': amzDate,\n  'x-amz-content-sha256': payloadHash,\n};\nif (sessionToken) headersToSign['x-amz-security-token'] = sessionToken;\n\nconst signedHeaderNames = Object.keys(headersToSign).map((k) => k.toLowerCase()).sort();\nconst canonicalHeaders = signedHeaderNames.map((n) => `${n}:${headersToSign[n]}\\n`).join('');\nconst signedHeaders = signedHeaderNames.join(';');\n\nconst canonicalRequest = [method, canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\\n');\n\nconst algorithm = 'AWS4-HMAC-SHA256';\nconst credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;\nconst stringToSign = [algorithm, amzDate, credentialScope, sha256Hex(canonicalRequest)].join('\\n');\n\nconst kDate = hmac(`AWS4${secretAccessKey}`, dateStamp);\nconst kRegion = hmac(kDate, region);\nconst kService = hmac(kRegion, service);\nconst kSigning = hmac(kService, 'aws4_request');\nconst signature = crypto.createHmac('sha256', kSigning).update(stringToSign, 'utf8').digest('hex');\n\nconst authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;\n\nreturn {\n  json: {\n    ...$json,\n    _signed: {\n      headers: { ...headersToSign, authorization },\n      body,\n    },\n  },\n};\n"
+      },
+      "id": "f7d6c2a1-9d9a-41b4-9f0e-9d3f18b86211",
+      "name": "Bedrock: Sign Change Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://bedrock-runtime.{{ $('Set Config').first().json.awsRegion }}.amazonaws.com/model/{{ $('Set Config').first().json.embedModelId }}/invoke",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json._signed.headers) }}",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json._signed.body }}",
+        "options": {}
+      },
+      "id": "6c838f9c-1b2c-4f15-8f8c-88c7f5b0e8f0",
+      "name": "Bedrock: Embed Change Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1808,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a Qdrant point for the change-log collection.\n// NOTE: $json here is the Bedrock embedding response, so we must pull the\n// original change-log fields from the earlier node.\nconst change = $('Build Change Log Text').first().json;\nconst embed = $input.first().json;\n\nreturn [{\n  json: {\n    point: {\n      id: change.pointId,\n      vector: embed.embedding,\n      payload: {\n        content: change.chunkText,\n        metadata: change.metadata,\n      }\n    }\n  }\n}];\n"
+      },
+      "id": "a9a9a20f-6d6b-4f0a-bf67-06cbfe6d4ae0",
+      "name": "Build Change Log Point",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Set Config').first().json.qdrantUrl }}/collections/{{ $('Set Config').first().json.changeLogCollection }}/points?wait=true",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: [$json.point] }) }}",
+        "options": {}
+      },
+      "id": "6b7f8e65-9a25-4b54-8d69-1e03c71d5a68",
+      "name": "Qdrant: Upsert Change Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2192,
         848
       ]
     },
@@ -364,7 +484,7 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "You are a regulatory compliance assistant. Always call the `regulatory_documents_search` tool to retrieve relevant excerpts from the latest indexed regulatory document before answering. Quote section identifiers when present and clearly state when the retrieved excerpts do not cover the question instead of guessing."
+          "systemMessage": "You are a regulatory compliance assistant.\n\n- For any question about the current regulation text, ALWAYS call the `regulatory_documents_search` tool first and ground your answer in the retrieved excerpts.\n- For any question about updates over time (e.g. 'what changed', 'latest update', 'since last run'), ALWAYS call the `regulatory_changes_search` tool first and ground your answer in the retrieved change-log excerpts.\n\nQuote section identifiers when present and clearly state when the retrieved excerpts do not cover the question instead of guessing."
         }
       },
       "id": "a7bdc4c8-be2d-4577-afbf-0f99696e98c6",
@@ -409,6 +529,28 @@
       "typeVersion": 1.1,
       "position": [
         192,
+        1792
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "regulatory_changes_search",
+        "toolDescription": "Searches the stored change-log summaries from the latest ingestion runs. Use for questions like 'what changed since the last run?' and 'summarize the latest update'.",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "regulatory_change_log",
+          "mode": "list"
+        },
+        "topK": 4,
+        "options": {}
+      },
+      "id": "0e6dd9cc-84e2-4c5f-9a5a-0d16a9f4ed7a",
+      "name": "Qdrant Change Log (Tool)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.1,
+      "position": [
+        432,
         1792
       ]
     },
@@ -505,6 +647,67 @@
             "node": "If: Any Stale Chunks?",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "If: Any Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Any Changes?": {
+      "main": [
+        [
+          {
+            "node": "Build Change Log Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Build Change Log Text": {
+      "main": [
+        [
+          {
+            "node": "Bedrock: Sign Change Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bedrock: Sign Change Log": {
+      "main": [
+        [
+          {
+            "node": "Bedrock: Embed Change Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bedrock: Embed Change Log": {
+      "main": [
+        [
+          {
+            "node": "Build Change Log Point",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Change Log Point": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Upsert Change Log",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -576,6 +779,17 @@
       ]
     },
     "Qdrant Vector Store (Tool)": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Change Log (Tool)": {
       "ai_tool": [
         [
           {
