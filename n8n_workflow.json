@@ -494,7 +494,7 @@
       "typeVersion": 2,
       "position": [
         -176,
-        1712
+        2200
       ],
       "notes": "Streamlit backend: POST { chatInput } -> AI Agent -> JSON response"
     },
@@ -508,7 +508,7 @@
       "typeVersion": 2,
       "position": [
         48,
-        1712
+        2200
       ]
     },
     {
@@ -520,8 +520,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        240,
-        1712
+        496,
+        2200
       ]
     },
     {
@@ -535,8 +535,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        432,
-        1712
+        720,
+        2200
       ]
     },
     {
@@ -565,8 +565,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2,
       "position": [
-        240,
-        1712
+        272,
+        2200
       ],
       "notes": "Dedicated agent for Streamlit POST /rag-chat. Keeps webhook response path isolated from the Chat Trigger path."
     },
@@ -653,8 +653,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        720,
-        1600
+        -176,
+        2800
       ],
       "notes": "Phase 3 UI: serves a simple HTML page to review pending change logs."
     },
@@ -672,8 +672,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        944,
-        1600
+        48,
+        2800
       ]
     },
     {
@@ -685,8 +685,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1152,
-        1600
+        272,
+        2800
       ]
     },
     {
@@ -707,8 +707,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1360,
-        1600
+        496,
+        2800
       ]
     },
     {
@@ -723,8 +723,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        720,
-        1792
+        -176,
+        3000
       ],
       "notes": "Handles approve/dismiss POSTs from the review page."
     },
@@ -737,8 +737,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        944,
-        1792
+        48,
+        3000
       ]
     },
     {
@@ -755,8 +755,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1152,
-        1792
+        272,
+        3000
       ]
     },
     {
@@ -770,8 +770,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1360,
-        1792
+        496,
+        3000
       ]
     }
   ],
