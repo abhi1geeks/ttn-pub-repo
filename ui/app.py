@@ -73,7 +73,8 @@ def extract_change_log_fields(point: Dict[str, Any]) -> Dict[str, Any]:
 def call_n8n_chat(settings: Settings, message: str) -> Dict[str, Any]:
     if not settings.n8n_chat_webhook_url:
         raise RuntimeError("N8N_CHAT_WEBHOOK_URL is not set")
-    r = requests.post(settings.n8n_chat_webhook_url, json={"chatInput": message}, timeout=120)
+    url = settings.n8n_chat_webhook_url.rstrip("/")
+    r = requests.post(url, json={"chatInput": message}, timeout=120)
     r.raise_for_status()
     # n8n chat trigger responses vary; return raw and render safely
     return r.json() if r.headers.get("content-type", "").startswith("application/json") else {"text": r.text}
@@ -150,35 +151,30 @@ with tabs[0]:
 
 with tabs[1]:
     st.subheader("Chat (RAG via n8n)")
-    st.caption("This UI calls your n8n Chat Trigger webhook as the backend.")
+    st.caption("Streamlit chat UI that POSTs to n8n RAG API webhook (`POST /webhook/rag-chat`).")
+
     if not settings.n8n_chat_webhook_url:
-        st.warning("Set N8N_CHAT_WEBHOOK_URL to the Chat Trigger Production URL from n8n.")
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+        st.warning("Set N8N_CHAT_WEBHOOK_URL to your n8n RAG API endpoint. Example: http://localhost:5678/webhook/rag-chat")
+    else:
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-    for m in st.session_state.messages:
-        with st.chat_message(m["role"]):
-            st.markdown(m["content"])
+        for m in st.session_state.messages:
+            with st.chat_message(m["role"]):
+                st.markdown(m["content"])
 
-    user_msg = st.chat_input("Ask a question about the latest indexed regulation…")
-    if user_msg:
-        st.session_state.messages.append({"role": "user", "content": user_msg})
-        with st.chat_message("user"):
-            st.markdown(user_msg)
-        with st.chat_message("assistant"):
-            try:
-                resp = call_n8n_chat(settings, user_msg)
-                # Try common shapes
-                answer = (
-                    resp.get("answer")
-                    or resp.get("output")
-                    or resp.get("text")
-                    or resp.get("response")
-                    or str(resp)
-                )
-                st.markdown(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-            except Exception as e:
-                err = f"Chat call failed. {e}"
-                st.error(err)
-                st.session_state.messages.append({"role": "assistant", "content": err})
+        user_msg = st.chat_input("Ask a question about the latest indexed regulation…")
+        if user_msg:
+            st.session_state.messages.append({"role": "user", "content": user_msg})
+            with st.chat_message("user"):
+                st.markdown(user_msg)
+            with st.chat_message("assistant"):
+                try:
+                    resp = call_n8n_chat(settings, user_msg)
+                    answer = resp.get("answer") or resp.get("output") or resp.get("text") or str(resp)
+                    st.markdown(answer)
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                except Exception as e:
+                    err = f"Chat call failed. {e}"
+                    st.error(err)
+                    st.session_state.messages.append({"role": "assistant", "content": err})

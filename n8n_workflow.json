@@ -483,6 +483,64 @@
     },
     {
       "parameters": {
+        "httpMethod": "POST",
+        "path": "rag-chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "2e7f2fd9-98ae-4c78-8c7a-8a3f9fef0b12",
+      "name": "RAG API (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        1712
+      ],
+      "notes": "Streamlit backend: POST { chatInput } -> AI Agent -> JSON response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst chatInput = (body.chatInput ?? body.question ?? '').toString();\n\nif (!chatInput.trim()) throw new Error('Missing chatInput');\n\nreturn [{ json: { chatInput } }];\n"
+      },
+      "id": "0f5e2a58-4a6a-4e66-9c2a-0d2b8f0d3b5a",
+      "name": "Parse RAG Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        1712
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\n\n// Common shapes observed from n8n LangChain agent nodes.\nconst answer = raw.output ?? raw.response ?? raw.text ?? raw.answer ?? raw.result ?? raw;\n\nreturn [{\n  json: {\n    answer: typeof answer === 'string' ? answer : JSON.stringify(answer),\n  }\n}];\n"
+      },
+      "id": "6d19d2bf-9caa-4b5a-bf42-49e7d3b2d1c8",
+      "name": "Format RAG Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1712
+      ]
+    },
+    {
+      "parameters": {
+        "responseBody": "={{ $json }}",
+        "responseCode": 200,
+        "options": {}
+      },
+      "id": "5c1b5a4e-0c4d-4b2d-9c75-3d7a5a5b3b1c",
+      "name": "Respond: RAG API",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        432,
+        1712
+      ]
+    },
+    {
+      "parameters": {
         "options": {
           "systemMessage": "You are a regulatory compliance assistant.\n\n- For any question about the current regulation text, ALWAYS call the `regulatory_documents_search` tool first and ground your answer in the retrieved excerpts.\n- For any question about updates over time (e.g. 'what changed', 'latest update', 'since last run'), ALWAYS call the `regulatory_changes_search` tool first and ground your answer in the retrieved change-log excerpts.\n\nQuote section identifiers when present and clearly state when the retrieved excerpts do not cover the question instead of guessing."
         }
@@ -495,6 +553,22 @@
         48,
         1600
       ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a regulatory compliance assistant.\n\n- For any question about the current regulation text, ALWAYS call the `regulatory_documents_search` tool first and ground your answer in the retrieved excerpts.\n- For any question about updates over time (e.g. 'what changed', 'latest update', 'since last run'), ALWAYS call the `regulatory_changes_search` tool first and ground your answer in the retrieved change-log excerpts.\n\nQuote section identifiers when present and clearly state when the retrieved excerpts do not cover the question instead of guessing."
+        }
+      },
+      "id": "3c7c5b79-0c0f-4a3b-8b9e-3b6d9a8c2f1e",
+      "name": "AI Agent (API)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1712
+      ],
+      "notes": "Dedicated agent for Streamlit POST /rag-chat. Keeps webhook response path isolated from the Chat Trigger path."
     },
     {
       "parameters": {
@@ -900,11 +974,60 @@
         ]
       ]
     },
+    "RAG API (Webhook)": {
+      "main": [
+        [
+          {
+            "node": "Parse RAG Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse RAG Request": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (API)": {
+      "main": [
+        [
+          {
+            "node": "Format RAG Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format RAG Response": {
+      "main": [
+        [
+          {
+            "node": "Respond: RAG API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Bedrock Chat Model": {
       "ai_languageModel": [
         [
           {
             "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (API)",
             "type": "ai_languageModel",
             "index": 0
           }
@@ -918,6 +1041,11 @@
             "node": "AI Agent",
             "type": "ai_tool",
             "index": 0
+          },
+          {
+            "node": "AI Agent (API)",
+            "type": "ai_tool",
+            "index": 0
           }
         ]
       ]
@@ -927,6 +1055,11 @@
         [
           {
             "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (API)",
             "type": "ai_tool",
             "index": 0
           }

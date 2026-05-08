@@ -10,20 +10,13 @@ Prereqs
 - Your n8n workflow activated (for production chat trigger URL)
 
 Setup
-1) Create a virtualenv (optional but recommended)
-   python3 -m venv .venv
-   source .venv/bin/activate
+1) Create local config
+   cp .env.example .env
+   # edit .env and set N8N_CHAT_WEBHOOK_URL
 
-2) Install deps
-   pip install -r requirements.txt
-
-3) Configure environment variables
-   export QDRANT_URL="http://localhost:6333"
-   export QDRANT_CHANGELOG_COLLECTION="regulatory_change_log"
-
-   # Paste the Production URL from the `Chat Trigger` node panel in n8n
-   # Example: http://localhost:5678/webhook/<your-chat-trigger>
-   export N8N_CHAT_WEBHOOK_URL="http://localhost:5678/webhook/<CHAT_TRIGGER_PATH>"
+2) Run (auto-creates venv + installs deps via uv)
+   chmod +x run.sh
+   ./run.sh
 
 Run
   streamlit run app.py
@@ -31,3 +24,9 @@ Run
 Notes
 - Review actions write back to Qdrant under payload.metadata.review = { status, at }.
 - For a cleaner demo, generate at least 2 change-log entries by updating the PDF and re-running ingestion.
+
+Chat URL note
+- This Streamlit app uses its own chat UI and calls n8n as a backend API.
+- In n8n, import the latest workflow and activate it, then use the Production URL for the node:
+  `RAG API (Webhook)` (path: `/webhook/rag-chat`)
+- Paste that URL into `N8N_CHAT_WEBHOOK_URL` in `ui/.env`.
