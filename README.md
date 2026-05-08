@@ -109,3 +109,18 @@ Remaining (next steps)
 - Demo hardening:
   - Ensure the change-log only summarizes delta (not baseline) when presenting “what changed”.
   - Add notifications (email/Slack) for new changes.
+
+Phase 3 UI (Human-in-the-loop review)
+
+This demo includes a minimal review UI implemented as n8n webhooks:
+
+- Review page (GET): /webhook/regulatory-review
+- Action endpoint (POST): /webhook/regulatory-review-action
+
+How to use:
+
+1. Ensure you have at least one entry in `regulatory_change_log` (run ingestion with a change).
+2. Open the review page in your browser:
+   http://localhost:5678/webhook/regulatory-review
+3. Approve or dismiss items. The decision is saved back into Qdrant under:
+   payload.metadata.review = { status, at }
