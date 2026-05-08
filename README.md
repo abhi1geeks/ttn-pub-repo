@@ -33,3 +33,8 @@ curl -X PUT http://localhost:6333/collections/regulatory_docs \
 curl -X PUT http://localhost:6333/collections/regulatory_docs/index \
      -H 'api-key: YOUR_KEY' -H 'Content-Type: application/json' \
      -d '{"field_name":"metadata.documentUrl","field_schema":"keyword"}'
+
+
+
+git checkout main
+git reset --hard checkpoint/demo-ready
