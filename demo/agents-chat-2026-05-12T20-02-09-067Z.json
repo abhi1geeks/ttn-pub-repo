@@ -1,0 +1,703 @@
+{
+  "format": "regulatory-agents-chat-export-v1",
+  "exportedAt": "2026-05-12T20:02:09.066Z",
+  "scope": {
+    "documentUrl": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf"
+  },
+  "optionsSnapshot": {
+    "qdrant_url": "http://qdrant:6333",
+    "request_debug_trace": true,
+    "compare_ingest_baseline_chars": 130212,
+    "compare_ingest_current_chars": 131322,
+    "compare_chunk_changes_count": 48
+  },
+  "messages": [
+    {
+      "role": "user",
+      "id": "1778615214442-p11l3r7",
+      "text": "What are the main obligations?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615221495-9ejndwm",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "Here are the main obligations for registered independent testing laboratories based on the provided excerpts:\n\n1. **Maintaining Independence**: Laboratories must remain independent of manufacturers, distributors, or operators [chunk:110].\n2. **Hiring and Background Checks**: Implement and maintain a hiring and background check system to ensure no person involved in inspection or certification has misled the Board, failed to comply with gaming laws, or committed relevant crimes [chunk:103].\n3. **System of Peer Review**: Implement and maintain a system of peer review to monitor the quality of inspection and certification procedures [chunk:106].\n4. **Consultation with Board**: Consult with the Board before testing new technologies or concepts and on questionable interpretations of Nevada's regulatory structure [chunk:106].\n5. **Confidentiality and Security**: Handle all information and data as confidential and implement security systems to protect the confidentiality of equipment, software, and other information [chunk:106].\n6. **Record Maintenance**: Maintain all submission and testing-related documentation, even if the laboratory ceases to be registered or ceases operations [chunk:107].\n7. **Notification Obligations**: Notify the Board of changes affecting testing services, material issues with certified products, and attempts at improper influence [chunk:108, chunk:109].\n8. **Periodic Evaluation**: Undergo periodic onsite evaluations and reviews by the Board to ensure continued compliance with registration requirements [chunk:108].\n\nIf you need a side-by-side comparison or a redline of two full PDFs, please use the **Readable diff** tab when two ingested runs are available, or supply **baseline and current full text** for the compare workflow.",
+          "cited_chunk_indices": [
+            103,
+            106,
+            107,
+            108,
+            110
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "What are the main obligations?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              103,
+              106,
+              107,
+              108,
+              110
+            ],
+            "answer_chars": 1773,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"Here are the main obligations for registered independent testing laboratories based on the provided excerpts:\\n\\n1. **Maintaining Independence**: Laboratories must remain independent of manufacturers, distributors, or operators [chunk:110].\\n2. **Hiring and Background Checks**: Implement and maintain a hiring and background check system to ensure no person involved in inspection or certification has misled the Board, failed to comply with gaming laws, or committed relevant crimes [chunk:103].\\n3. **System of Peer Review**: Implement and maintain a system of peer review to monitor the quality of inspection and certification procedures [chunk:106].\\n4. **Consultation with Board**: Consult with the Board before testing new technologies or concepts and on questionable interpretations of Nevada's regulatory structure [chunk:106].\\n5. **Confidentiality and Security**: Handle all information and data as confidential and implement security systems to protect the confidentiality of equipment, software, and other information [chunk:106].\\n6. **Record Maintenance**: Maintain all submission and testing-related documentation, even if the laboratory ceases to be registered or ceases operations [chunk:107].\\n7. **Notification Obligations**: Notify the Board of changes affecting testing services, material issues with certified products, and attempts at improper influence [chunk:108, chunk:109].\\n8. **Periodic Evaluation**: Undergo periodic onsite evaluations and reviews by the Board to ensure continued compliance with registration requirements [chunk:108].\\n\\nIf you need a side-by-side comparison or a redline of two full PDFs, please use the **Readable diff** tab when two ingested runs are available, or supply **baseline and current full text** for the compare workflow.\",\"cited_chunk_indices\":[103,106,107,108,110],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"What are the main obligations?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[103,106,107,108,110],\"answer_chars\":1773,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615308429-6iqt6jl",
+      "text": "can give me idea about how many lines got added"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615315130-yfbzfl7",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "summary",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "To get an accurate count of added lines, use the product **Readable diff** tab when two ingested runs are available, or supply **baseline and current full text** for the compare workflow. However, based on the provided excerpts, it appears there have been several amendments and additions across various sections, indicating multiple lines were likely added or modified [chunk:116][chunk:68][chunk:15][chunk:98][chunk:51][chunk:58][chunk:41][chunk:13].",
+          "cited_chunk_indices": [
+            13,
+            15,
+            41,
+            51,
+            58,
+            68,
+            98,
+            116
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": "summary",
+        "debug_trace": {
+          "request": {
+            "query_preview": "can give me idea about how many lines got added",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "summary",
+            "reason": null
+          },
+          "branch": "summary_fallback_qna",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              13,
+              15,
+              41,
+              51,
+              58,
+              68,
+              98,
+              116
+            ],
+            "answer_chars": 452,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"summary\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"To get an accurate count of added lines, use the product **Readable diff** tab when two ingested runs are available, or supply **baseline and current full text** for the compare workflow. However, based on the provided excerpts, it appears there have been several amendments and additions across various sections, indicating multiple lines were likely added or modified [chunk:116][chunk:68][chunk:15][chunk:98][chunk:51][chunk:58][chunk:41][chunk:13].\",\"cited_chunk_indices\":[13,15,41,51,58,68,98,116],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":\"summary\",\"debug_trace\":{\"request\":{\"query_preview\":\"can give me idea about how many lines got added\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"summary\",\"reason\":null},\"branch\":\"summary_fallback_qna\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[13,15,41,51,58,68,98,116],\"answer_chars\":452,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615507014-6spu5tr",
+      "text": "What banner or disclaimer appears before Regulation 14.010, and what does it say the draft is for?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615511497-6x5524w",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "A banner or disclaimer appears before Regulation 14.010 stating that the draft is for \"sample\" purposes [chunk:14]. This indicates that the draft is not yet finalized and is likely used for review or illustrative purposes.",
+          "cited_chunk_indices": [
+            14
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "What banner or disclaimer appears before Regulation 14.010, and what does it say the draft is for?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              14
+            ],
+            "answer_chars": 222,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"A banner or disclaimer appears before Regulation 14.010 stating that the draft is for \\\"sample\\\" purposes [chunk:14]. This indicates that the draft is not yet finalized and is likely used for review or illustrative purposes.\",\"cited_chunk_indices\":[14],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"What banner or disclaimer appears before Regulation 14.010, and what does it say the draft is for?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[14],\"answer_chars\":222,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615567702-81v7b1y",
+      "text": "How does section 14.015 describe the Commission’s policy toward innovative technology, and what must manufacturers do before deploying certain interfaces?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615572212-msjhhja",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "Section 14.015 describes the Commission's policy toward innovative technology, stating that such technology may advance public purposes but only when deployed with controls that preserve game integrity, patron transparency, and accurate revenue reporting [chunk:13]. Manufacturers must obtain prior written Chair approval before deploying interfaces that materially change how funds move between patron accounts and a game or gaming device [chunk:14].",
+          "cited_chunk_indices": [
+            13,
+            14
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "How does section 14.015 describe the Commission’s policy toward innovative technology, and what must manufacturers do before deploying certain interfaces?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              13,
+              14
+            ],
+            "answer_chars": 451,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"Section 14.015 describes the Commission's policy toward innovative technology, stating that such technology may advance public purposes but only when deployed with controls that preserve game integrity, patron transparency, and accurate revenue reporting [chunk:13]. Manufacturers must obtain prior written Chair approval before deploying interfaces that materially change how funds move between patron accounts and a game or gaming device [chunk:14].\",\"cited_chunk_indices\":[13,14],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"How does section 14.015 describe the Commission’s policy toward innovative technology, and what must manufacturers do before deploying certain interfaces?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[13,14],\"answer_chars\":451,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615666005-drfxi2v",
+      "text": "What does subsection 1 of 14.030 require before a gaming device may be distributed or offered for play in Nevada?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615670768-bibav22",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "Subsection 1 of 14.030 requires that a gaming device must receive administrative approval from the Chair or approval by the Commission before it can be distributed or offered for play in Nevada [chunk:25].",
+          "cited_chunk_indices": [
+            25
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "What does subsection 1 of 14.030 require before a gaming device may be distributed or offered for play in Nevada?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              25
+            ],
+            "answer_chars": 205,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"Subsection 1 of 14.030 requires that a gaming device must receive administrative approval from the Chair or approval by the Commission before it can be distributed or offered for play in Nevada [chunk:25].\",\"cited_chunk_indices\":[25],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"What does subsection 1 of 14.030 require before a gaming device may be distributed or offered for play in Nevada?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[25],\"answer_chars\":205,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615748571-mj5xccc",
+      "text": "What records must a licensee keep under 14.200 for repairs that can affect game outcome?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615752004-c3erjq9",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "A licensee must record the date, device identifier, nature of the repair, and identity of the person performing the work for any repair that replaces a part capable of affecting game outcome [chunk:53][chunk:52].",
+          "cited_chunk_indices": [
+            52,
+            53
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "What records must a licensee keep under 14.200 for repairs that can affect game outcome?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              52,
+              53
+            ],
+            "answer_chars": 212,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"A licensee must record the date, device identifier, nature of the repair, and identity of the person performing the work for any repair that replaces a part capable of affecting game outcome [chunk:53][chunk:52].\",\"cited_chunk_indices\":[52,53],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"What records must a licensee keep under 14.200 for repairs that can affect game outcome?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[52,53],\"answer_chars\":212,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615793918-s2niez8",
+      "text": "In final approval of new gaming devices (14.100), does the regulation still say that approval does not certify the device’s safety?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615797841-c891i3l",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "The regulation does not explicitly state that approval does not certify the device’s safety. However, the approval process focuses on compliance with applicable requirements, standards, and public policy [chunk:40][chunk:41]. This suggests that safety might be implicitly covered under these requirements and standards, but it is not explicitly mentioned in the provided excerpts. For a definitive answer, more context or a full-text comparison would be needed.",
+          "cited_chunk_indices": [
+            40,
+            41
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "In final approval of new gaming devices (14.100), does the regulation still say that approval does not certify the device’s safety?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              40,
+              41
+            ],
+            "answer_chars": 461,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"The regulation does not explicitly state that approval does not certify the device’s safety. However, the approval process focuses on compliance with applicable requirements, standards, and public policy [chunk:40][chunk:41]. This suggests that safety might be implicitly covered under these requirements and standards, but it is not explicitly mentioned in the provided excerpts. For a definitive answer, more context or a full-text comparison would be needed.\",\"cited_chunk_indices\":[40,41],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"In final approval of new gaming devices (14.100), does the regulation still say that approval does not certify the device’s safety?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[40,41],\"answer_chars\":461,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615882477-cpl4gtl",
+      "text": "Is there a section 14.0305, and what does it require?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778615886990-hmlkwt1",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "There is no section 14.0305 found in the provided excerpts. The closest relevant sections mentioned are 14.360 and 14.395, which deal with the requirements for independent testing laboratories [chunk:110][chunk:109].",
+          "cited_chunk_indices": [
+            109,
+            110
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "Is there a section 14.0305, and what does it require?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              109,
+              110
+            ],
+            "answer_chars": 216,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"There is no section 14.0305 found in the provided excerpts. The closest relevant sections mentioned are 14.360 and 14.395, which deal with the requirements for independent testing laboratories [chunk:110][chunk:109].\",\"cited_chunk_indices\":[109,110],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"Is there a section 14.0305, and what does it require?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[109,110],\"answer_chars\":216,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778615939465-oeonhow",
+      "text": "List which major sections were edited in this sample draft besides definitions."
+    },
+    {
+      "role": "assistant",
+      "id": "1778615944281-txws1ub",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "Major sections edited in this sample draft, besides definitions, include:\n- Section 14.020 regarding licensing and registration of manufacturers and distributors [chunk:14].\n- Section 14.302 regarding registration procedures for manufacturers and distributors [chunk:73].\n- Section 14.260 regarding approval of associated equipment [chunk:64].\n- Section 14.380 regarding independent testing laboratories [chunk:3].\n- Section 14.410 regarding revocation of registration for testing laboratories [chunk:115].\n\nIf you need a side-by-side comparison, please use the Readable diff tab or provide baseline and current full texts.",
+          "cited_chunk_indices": [
+            3,
+            14,
+            64,
+            73,
+            115
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "List which major sections were edited in this sample draft besides definitions.",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              3,
+              14,
+              64,
+              73,
+              115
+            ],
+            "answer_chars": 623,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"Major sections edited in this sample draft, besides definitions, include:\\n- Section 14.020 regarding licensing and registration of manufacturers and distributors [chunk:14].\\n- Section 14.302 regarding registration procedures for manufacturers and distributors [chunk:73].\\n- Section 14.260 regarding approval of associated equipment [chunk:64].\\n- Section 14.380 regarding independent testing laboratories [chunk:3].\\n- Section 14.410 regarding revocation of registration for testing laboratories [chunk:115].\\n\\nIf you need a side-by-side comparison, please use the Readable diff tab or provide baseline and current full texts.\",\"cited_chunk_indices\":[3,14,64,73,115],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"List which major sections were edited in this sample draft besides definitions.\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[3,14,64,73,115],\"answer_chars\":623,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778616002327-fah19zl",
+      "text": "In the independent testing laboratory registration sections, how does the Chair revoke a lab’s registration—does it still use the phrase “should the Chair determine”?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778616006156-6igcd47",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "Yes, the phrase \"should the Chair determine\" is used in the context of revoking a lab’s registration [chunk:114]. This indicates that the Chair retains discretion in deciding whether to revoke a registration based on certain qualifications or compliance failures.",
+          "cited_chunk_indices": [
+            114
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "In the independent testing laboratory registration sections, how does the Chair revoke a lab’s registration—does it still use the phrase “should the Chair determine”?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              114
+            ],
+            "answer_chars": 263,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"Yes, the phrase \\\"should the Chair determine\\\" is used in the context of revoking a lab’s registration [chunk:114]. This indicates that the Chair retains discretion in deciding whether to revoke a registration based on certain qualifications or compliance failures.\",\"cited_chunk_indices\":[114],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"In the independent testing laboratory registration sections, how does the Chair revoke a lab’s registration—does it still use the phrase “should the Chair determine”?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[114],\"answer_chars\":263,\"qna_stub\":false}}}"
+    },
+    {
+      "role": "user",
+      "id": "1778616071785-b4thhq2",
+      "text": "Compared to the official Regulation 14 extract, what are the main differences in the modified version?"
+    },
+    {
+      "role": "assistant",
+      "id": "1778616077080-1bw9ln9",
+      "agentResponse": {
+        "intent": "qna",
+        "intent_id": 3,
+        "supervisor_route": "qna",
+        "blocked": false,
+        "reason": null,
+        "executed": true,
+        "needs_input": [],
+        "summary": null,
+        "comparison": null,
+        "qna": {
+          "answer": "To compare the official Regulation 14 extract with the modified version, you need to use the product **Readable diff** tab when two ingested runs are available, or supply **baseline and current full text** for the compare workflow.\n\nHowever, based on the provided excerpts, the modified version appears to have the following changes compared to the official extract:\n\n1. One paragraph has been removed.\n2. One new paragraph has been inserted.\n3. Several paragraphs have been rewritten.\n\nThe editorial draft notes that \"All other sections match the extracted official text unless noted.\" This suggests that the majority of the regulation remains unchanged, with specific sections highlighted for amendments [chunk:3].\n\nFor a true side-by-side comparison, please ensure you have both the baseline and current full texts available.",
+          "cited_chunk_indices": [
+            3
+          ],
+          "model_id": "amazon.nova-pro-v1:0",
+          "stub": false
+        },
+        "fallback_from": null,
+        "debug_trace": {
+          "request": {
+            "query_preview": "Compared to the official Regulation 14 extract, what are the main differences in the modified version?",
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "top_k": 8,
+            "qdrant_collection": "regulatory_docs",
+            "has_compare_context": true,
+            "has_summary_context": false,
+            "compare_baseline_chars": 130212,
+            "compare_current_chars": 131322,
+            "compare_chunk_changes_count": 48
+          },
+          "orchestrate": {
+            "route": "qna",
+            "reason": null
+          },
+          "branch": "qna_primary",
+          "retrieve_qna": {
+            "document_url": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf",
+            "qdrant_collection": "regulatory_docs",
+            "top_k": 8,
+            "outcome": "ok",
+            "cited_chunk_indices": [
+              3
+            ],
+            "answer_chars": 828,
+            "qna_stub": false
+          }
+        }
+      },
+      "rawHttpBody": "{\"intent\":\"qna\",\"intent_id\":3,\"supervisor_route\":\"qna\",\"blocked\":false,\"reason\":null,\"executed\":true,\"needs_input\":[],\"summary\":null,\"comparison\":null,\"qna\":{\"answer\":\"To compare the official Regulation 14 extract with the modified version, you need to use the product **Readable diff** tab when two ingested runs are available, or supply **baseline and current full text** for the compare workflow.\\n\\nHowever, based on the provided excerpts, the modified version appears to have the following changes compared to the official extract:\\n\\n1. One paragraph has been removed.\\n2. One new paragraph has been inserted.\\n3. Several paragraphs have been rewritten.\\n\\nThe editorial draft notes that \\\"All other sections match the extracted official text unless noted.\\\" This suggests that the majority of the regulation remains unchanged, with specific sections highlighted for amendments [chunk:3].\\n\\nFor a true side-by-side comparison, please ensure you have both the baseline and current full texts available.\",\"cited_chunk_indices\":[3],\"model_id\":\"amazon.nova-pro-v1:0\",\"stub\":false},\"fallback_from\":null,\"debug_trace\":{\"request\":{\"query_preview\":\"Compared to the official Regulation 14 extract, what are the main differences in the modified version?\",\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"top_k\":8,\"qdrant_collection\":\"regulatory_docs\",\"has_compare_context\":true,\"has_summary_context\":false,\"compare_baseline_chars\":130212,\"compare_current_chars\":131322,\"compare_chunk_changes_count\":48},\"orchestrate\":{\"route\":\"qna\",\"reason\":null},\"branch\":\"qna_primary\",\"retrieve_qna\":{\"document_url\":\"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf\",\"qdrant_collection\":\"regulatory_docs\",\"top_k\":8,\"outcome\":\"ok\",\"cited_chunk_indices\":[3],\"answer_chars\":828,\"qna_stub\":false}}}"
+    }
+  ]
+}

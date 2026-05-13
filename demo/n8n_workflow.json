@@ -1,0 +1,900 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Regulatory PDF -> Versioned Vector RAG\n\n**Setup (one-time)**\n\n1. **Credentials**\n   - `AWS` credential (Access Key + Secret) -> used by the Bedrock embed HTTP node and the Bedrock LangChain nodes.\n   - `Header Auth` credential named e.g. *Qdrant API Key* with header `api-key` = `<your-qdrant-key>`. Attach it to all 3 Qdrant HTTP Request nodes.\n   - `Qdrant` credential (URL + key) for the Vector Store retrieval node in the chat branch.\n\n2. **Create the Qdrant collection** (Titan v2 = 1024 dims):\n   ```\n   curl -X PUT http://localhost:6333/collections/regulatory_docs \\\n     -H 'api-key: YOUR_KEY' -H 'Content-Type: application/json' \\\n     -d '{\"vectors\":{\"size\":1024,\"distance\":\"Cosine\"}}'\n   curl -X PUT http://localhost:6333/collections/regulatory_docs/index \\\n     -H 'api-key: YOUR_KEY' -H 'Content-Type: application/json' \\\n     -d '{\"field_name\":\"metadata.documentUrl\",\"field_schema\":\"keyword\"}'\n   ```\n\n3. **Edit `Set Config`** with your PDF URL, Qdrant URL, region, etc.\n\n4. Enable Bedrock model access in your AWS account for Titan-Embed-v2 (embeddings) and Amazon Nova Pro `amazon.nova-pro-v1:0` (chat / agents).\n\n**How versioning works**\n\nEach chunk's point ID = UUIDv5 of `documentUrl::sha256(chunkText)`. Identical text -> identical ID. On every run we scroll existing IDs, diff against the new set, and:\n  - upsert only NEW chunk IDs (one Bedrock embedding call per new chunk)\n  - delete IDs that disappeared from the latest PDF\n  - skip the intersection entirely (no embedding cost)\n\nThe collection is always the latest version, ready for the chat branch.",
+        "height": 540,
+        "width": 720
+      },
+      "id": "302c668d-f253-4457-a1a9-a6b3a2044dbf",
+      "name": "README",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -688,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## INGESTION (Scheduled)\n\nFires on cron, downloads the PDF, chunks it, computes content-hash IDs,\nasks Qdrant which IDs already exist, then:\n  upper branch -> embed + upsert NEW chunks only\n  lower branch -> delete chunks that vanished from the latest PDF",
+        "height": 168,
+        "width": 556
+      },
+      "id": "7dacbd83-3e00-4ac7-8c91-c85451bf6cd6",
+      "name": "Section: Ingestion",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## RAG CHAT (retrieve-then-agent)\n\nHosted chat uses **Response nodes**: `Code: Chat Scope` \u2192 `HTTP: ChatPipeline` (POST /v1/pipelines/chat on the agents service) \u2192 **Chat** node.\nLegacy LangChain nodes below are **disconnected**; keep for reference or delete in UI.\n\n**Webhooks**: `POST /webhook/regulatory-compare` and `POST /webhook/regulatory-orchestrate` call the agents service (compare + orchestrate); orchestrate response is the JSON body from `/v1/orchestrate`.",
+        "height": 200,
+        "width": 900
+      },
+      "id": "252a9042-027b-47cf-971b-070a076c04c9",
+      "name": "Section: RAG",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1824,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "408d630b-385c-4d51-9928-5c7acc2b8b77",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1760,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "documentUrl",
+              "value": "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/regulation-14-as-of-02-26.pdf",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "qdrantUrl",
+              "value": "http://qdrant:6333",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "qdrantCollection",
+              "value": "regulatory_docs",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "awsRegion",
+              "value": "us-east-1",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "embedModelId",
+              "value": "amazon.titan-embed-text-v2:0",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "embedDimensions",
+              "value": 1024,
+              "type": "number"
+            },
+            {
+              "id": "a7",
+              "name": "chunkSize",
+              "value": 1500,
+              "type": "number"
+            },
+            {
+              "id": "a8",
+              "name": "chunkOverlap",
+              "value": 200,
+              "type": "number"
+            },
+            {
+              "id": "c5d7b0eb-61ee-47c3-a67c-c5a8d8b4a148",
+              "name": "awsAccessKeyId",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "fc54f7d0-c5c5-42fd-a5f6-c96562c50a55",
+              "name": "awsSecretAccessKey",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "n-qr",
+              "name": "qdrantRunsCollection",
+              "value": "regulatory_docs_runs",
+              "type": "string"
+            },
+            {
+              "id": "n-qk",
+              "name": "qdrantApiKey",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "n-ag",
+              "name": "agentsApiUrl",
+              "value": "http://agents:8000",
+              "type": "string"
+            },
+            {
+              "id": "n-st",
+              "name": "awsSessionToken",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c22220aa-2cbe-44cf-bae9-1a9acb51e55d",
+      "name": "Set Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1536,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.documentUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "dfdd39cb-6e79-4d91-9867-839bffc78a10",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1312,
+        1024
+      ],
+      "notes": "Swap this for a Firecrawl / crawl4ai node if the URL is an HTML page that links to the PDF rather than the PDF itself."
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "7a619d09-a894-4970-a223-297339bb45e8",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1088,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Chunk + content-hash + deterministic point IDs ===\nconst crypto = require('crypto');\n\nconst rawText = ($input.first().json.text || '').toString();\nif (!rawText || rawText.trim().length < 50) {\n  throw new Error('No usable text extracted from PDF');\n}\n\n// Light normalisation so cosmetic re-flows do not invalidate hashes.\nconst text = rawText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[\\t ]+/g, ' ')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nconst cfg = $('Set Config').first().json;\nconst documentUrl = cfg.documentUrl;\nconst chunkSize = cfg.chunkSize || 1500;\nconst chunkOverlap = cfg.chunkOverlap || 200;\n\n// Soft-boundary recursive splitter: prefer paragraph -> sentence -> word.\nfunction splitText(t, size, overlap) {\n  const out = [];\n  let start = 0;\n  while (start < t.length) {\n    let end = Math.min(start + size, t.length);\n    if (end < t.length) {\n      const minBreak = start + Math.floor(size * 0.5);\n      const para = t.lastIndexOf('\\n\\n', end);\n      const sent = t.lastIndexOf('. ', end);\n      const space = t.lastIndexOf(' ', end);\n      if (para > minBreak) end = para + 2;\n      else if (sent > minBreak) end = sent + 2;\n      else if (space > minBreak) end = space + 1;\n    }\n    const slice = t.slice(start, end).trim();\n    if (slice.length) out.push(slice);\n    if (end >= t.length) break;\n    start = Math.max(end - overlap, start + 1);\n  }\n  return out;\n}\n\nconst chunks = splitText(text, chunkSize, chunkOverlap);\nconst versionId = new Date().toISOString();\nconst documentHash = crypto.createHash('sha256').update(text).digest('hex');\n\n// Deterministic UUIDv5-style ID derived from input string.\nfunction deterministicUuid(input) {\n  const h = crypto.createHash('sha1').update(input).digest();\n  h[6] = (h[6] & 0x0f) | 0x50; // version 5\n  h[8] = (h[8] & 0x3f) | 0x80; // RFC 4122 variant\n  const hex = h.toString('hex');\n  return [\n    hex.slice(0, 8),\n    hex.slice(8, 12),\n    hex.slice(12, 16),\n    hex.slice(16, 20),\n    hex.slice(20, 32)\n  ].join('-');\n}\n\nreturn chunks.map((chunkText, index) => {\n  const chunkHash = crypto.createHash('sha256').update(chunkText).digest('hex');\n  const pointId = deterministicUuid(`${documentUrl}::${chunkHash}`);\n  const out = {\n    json: {\n      pointId, chunkHash, chunkIndex: index, chunkText,\n      documentUrl, documentHash, versionId,\n    }\n  };\n  if (index === 0) out.json.fullText = text;   // <-- only on the first item\n  return out;\n});"
+      },
+      "id": "9176b1da-724c-4ca3-a24e-3a0df50e7fca",
+      "name": "Chunk + Hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -864,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Set Config').first().json.qdrantUrl }}/collections/{{ $('Set Config').first().json.qdrantCollection }}/points/scroll",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  filter: {\n    must: [\n      { key: 'metadata.documentUrl', match: { value: $('Set Config').first().json.documentUrl } }\n    ]\n  },\n  limit: 10000,\n  with_payload: false,\n  with_vector: false\n}) }}",
+        "options": {}
+      },
+      "id": "36183714-0405-4a08-bd4e-9023b88a8328",
+      "name": "Qdrant: Scroll Existing IDs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -640,
+        1024
+      ],
+      "notes": "Returns IDs of all chunks already stored for this documentUrl. The 'metadata.documentUrl' field needs a Qdrant payload index for performant filtering (see README sticky)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Diff: which chunk IDs are new, which are stale ===\nconst newChunks = $('Chunk + Hash').all().map(it => it.json);\nconst scroll = $input.first().json;\n\nconst existingPoints = (scroll && scroll.result && scroll.result.points) || [];\nconst existingIds = new Set(existingPoints.map(p => String(p.id)));\nconst newIdSet = new Set(newChunks.map(c => c.pointId));\n\nconst toInsert = newChunks.filter(c => !existingIds.has(c.pointId));\nconst toDeleteIds = existingPoints\n  .filter(p => !newIdSet.has(String(p.id)))\n  .map(p => p.id);\n\nreturn [{\n  json: {\n    summary: {\n      totalChunks: newChunks.length,\n      newChunks: toInsert.length,\n      removedChunks: toDeleteIds.length,\n      unchangedChunks: newChunks.length - toInsert.length\n    },\n    toInsert,\n    toDeleteIds,\n    versionId: newChunks[0] ? newChunks[0].versionId : null,\n    documentUrl: newChunks[0] ? newChunks[0].documentUrl : null,\n    documentHash: newChunks[0] ? newChunks[0].documentHash : null\n  }\n}];\n"
+      },
+      "id": "bf47c7f1-ad51-49b4-9644-3d74446fb0c9",
+      "name": "Compute Diff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "toInsert",
+        "options": {}
+      },
+      "id": "03dde963-1fca-4b84-93b7-3113db5937ff",
+      "name": "Split: New Chunks",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        32,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Combine the chunk metadata with the embedding into one Qdrant point.\nconst chunk = $('Split: New Chunks').item.json;\nconst embed = $input.item.json;\n\nreturn {\n  json: {\n    point: {\n      id: chunk.pointId,\n      vector: embed.embedding,\n      payload: {\n        content: chunk.chunkText,\n        metadata: {\n          chunkHash: chunk.chunkHash,\n          chunkIndex: chunk.chunkIndex,\n          documentUrl: chunk.documentUrl,\n          documentHash: chunk.documentHash,\n          versionId: chunk.versionId\n        }\n      }\n    }\n  }\n};\n"
+      },
+      "id": "cc4d8092-27ac-47b3-8d0f-07006b318e5d",
+      "name": "Build Qdrant Point",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Set Config').first().json.qdrantUrl }}/collections/{{ $('Set Config').first().json.qdrantCollection }}/points?wait=true",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: [$json.point] }) }}",
+        "options": {}
+      },
+      "id": "e4f36571-b4b2-4646-aa20-b7fd9dee6c1c",
+      "name": "Qdrant: Upsert Point",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        704,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.toDeleteIds.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "953378f8-a5e1-4ad6-9b4d-f4ca9f4783e8",
+      "name": "If: Any Stale Chunks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        32,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Set Config').first().json.qdrantUrl }}/collections/{{ $('Set Config').first().json.qdrantCollection }}/points/delete?wait=true",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: $json.toDeleteIds }) }}",
+        "options": {}
+      },
+      "id": "ab0ba229-68af-45d9-a4d8-cc6354175bc8",
+      "name": "Qdrant: Delete Stale Points",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        256,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "public": true,
+        "mode": "hostedChat",
+        "authentication": "none",
+        "availableInChat": false,
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "id": "6d247034-ea51-48c8-abdb-78afb1b48cb4",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1760,
+        496
+      ],
+      "webhookId": "b90525a6-3580-45d1-b84a-54af10d018d6"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a regulatory compliance assistant. Always call the `regulatory_documents_search` tool to retrieve relevant excerpts from the latest indexed regulatory document before answering. Quote section identifiers when present and clearly state when the retrieved excerpts do not cover the question instead of guessing."
+        }
+      },
+      "id": "a7bdc4c8-be2d-4577-afbf-0f99696e98c6",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "model": "amazon.nova-pro-v1:0",
+        "options": {}
+      },
+      "id": "f980b753-056a-4e52-97de-384e0b44f66f",
+      "name": "Bedrock Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAwsBedrock",
+      "typeVersion": 1,
+      "position": [
+        -1536,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "regulatory_documents_search",
+        "toolDescription": "Searches the indexed regulatory documents and returns the most relevant excerpts. Use for any question about regulations, policies, or compliance requirements.",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "regulatory_docs",
+          "mode": "list"
+        },
+        "topK": 6,
+        "options": {}
+      },
+      "id": "351e01e8-060f-40f8-a7f4-c2579d35d2b9",
+      "name": "Qdrant Vector Store (Tool)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.1,
+      "position": [
+        -1408,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "model": "amazon.titan-embed-text-v2:0"
+      },
+      "id": "4868a26e-9438-4e50-9380-a5c629c4f18d",
+      "name": "Bedrock Embeddings (Retrieval)",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsAwsBedrock",
+      "typeVersion": 1,
+      "position": [
+        -1328,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// === Manual SigV4 signing for Bedrock (works around n8n issue #14623) ===\nconst crypto = require('crypto');\nconst https = require('https');\n\n// --- Inputs ---\nconst cfg = $('Set Config').first().json;\nconst region = cfg.awsRegion;\nconst modelId = cfg.embedModelId;\nconst dimensions = cfg.embedDimensions;\nconst accessKeyId = cfg.awsAccessKeyId;\nconst secretAccessKey = cfg.awsSecretAccessKey;\nconst sessionToken = cfg.awsSessionToken || null;\nconst chunkText = $json.chunkText;\n\nif (!accessKeyId || !secretAccessKey) {\n  throw new Error('awsAccessKeyId / awsSecretAccessKey missing from Set Config node');\n}\nif (!chunkText) {\n  throw new Error('No chunkText on input item -- check upstream node mode and connections');\n}\n\n// --- SigV4 signing ---\nconst service = 'bedrock';                                  // the n8n bug fix\nconst host = `bedrock-runtime.${region}.amazonaws.com`;\n\n// Path for the actual request: URI-encoded ONCE\nconst requestPath = `/model/${encodeURIComponent(modelId)}/invoke`;\n// Path for SigV4 canonical URI: URI-encoded TWICE (required for all services except S3)\nconst canonicalUri = `/model/${encodeURIComponent(encodeURIComponent(modelId))}/invoke`;\n\nconst body = JSON.stringify({ inputText: chunkText, dimensions, normalize: true });\nconst amzDate = new Date().toISOString().replace(/[:-]|\\.\\d{3}/g, '');\nconst dateStamp = amzDate.slice(0, 8);\nconst payloadHash = crypto.createHash('sha256').update(body).digest('hex');\n\nconst headersToSign = {\n  'content-type': 'application/json',\n  'host': host,\n  'x-amz-content-sha256': payloadHash,\n  'x-amz-date': amzDate,\n};\nif (sessionToken) headersToSign['x-amz-security-token'] = sessionToken;\n\nconst sortedKeys = Object.keys(headersToSign).sort();\nconst canonicalHeaders = sortedKeys.map(k => `${k}:${headersToSign[k]}\\n`).join('');\nconst signedHeaders = sortedKeys.join(';');\n\nconst canonicalRequest = ['POST', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\\n');\nconst credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;\nconst stringToSign = [\n  'AWS4-HMAC-SHA256',\n  amzDate,\n  credentialScope,\n  crypto.createHash('sha256').update(canonicalRequest).digest('hex'),\n].join('\\n');\n\nconst kDate = crypto.createHmac('sha256', 'AWS4' + secretAccessKey).update(dateStamp).digest();\nconst kRegion = crypto.createHmac('sha256', kDate).update(region).digest();\nconst kService = crypto.createHmac('sha256', kRegion).update(service).digest();\nconst kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();\nconst signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');\n\nconst authorization =\n  `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, ` +\n  `SignedHeaders=${signedHeaders}, Signature=${signature}`;\n\n// --- Send request: promise ALWAYS resolves, errors are returned as data ---\nconst httpResult = await new Promise((resolve) => {\n  const req = https.request(\n    {\n      hostname: host,\n      path: requestPath,\n      method: 'POST',\n      headers: {\n        'Content-Type': 'application/json',\n        'X-Amz-Date': amzDate,\n        'X-Amz-Content-Sha256': payloadHash,\n        Authorization: authorization,\n        ...(sessionToken ? { 'X-Amz-Security-Token': sessionToken } : {}),\n      },\n    },\n    (res) => {\n      const chunks = [];\n      res.on('data', (c) => chunks.push(c));\n      res.on('end', () => {\n        resolve({\n          ok: true,\n          status: res.statusCode,\n          body: Buffer.concat(chunks).toString('utf8'),\n        });\n      });\n    }\n  );\n  req.on('error', (e) => resolve({ ok: false, error: e && e.message ? e.message : String(e) }));\n  req.write(body);\n  req.end();\n});\n\n// --- Top-level error handling: throw fresh Error objects only ---\nif (!httpResult.ok) {\n  throw new Error('Bedrock network error: ' + httpResult.error);\n}\nif (httpResult.status < 200 || httpResult.status >= 300) {\n  throw new Error('Bedrock HTTP ' + httpResult.status + ': ' + httpResult.body.slice(0, 800));\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(httpResult.body);\n} catch (_) {\n  throw new Error('Bedrock returned non-JSON: ' + httpResult.body.slice(0, 800));\n}\n\nif (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n  throw new Error('Bedrock response was not a JSON object: ' + JSON.stringify(parsed).slice(0, 500));\n}\nif (!Array.isArray(parsed.embedding)) {\n  throw new Error('Bedrock response missing embedding array: ' + JSON.stringify(parsed).slice(0, 500));\n}\n\nreturn { json: parsed };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        928
+      ],
+      "id": "310fd87d-da8c-4e2f-a612-11e6b744d974",
+      "name": "Bedrock: Embed Chunk (SigV4)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Capture the diff as a run record before any inserts/deletes happen ===\nconst crypto = require('crypto');\nconst https = require('https');\n\n// --- Inputs ---\nconst cfg = $('Set Config').first().json;\nconst diff = $json;\n\nconst qdrantApiKey = cfg.qdrantApiKey || '';\nconst chunksColl = cfg.qdrantCollection;\nconst runsColl = cfg.qdrantRunsCollection || 'regulatory_docs_runs';\n\n// Parse Qdrant URL manually (URL global is not exposed in n8n's Code sandbox)\nconst m = String(cfg.qdrantUrl).match(/^(https?):\\/\\/([^:/]+)(?::(\\d+))?/);\nif (!m) throw new Error('Invalid qdrantUrl in Set Config: ' + cfg.qdrantUrl);\nconst qProtocol = m[1];\nconst qHostname = m[2];\nconst qPort = m[3] ? parseInt(m[3], 10) : (qProtocol === 'https' ? 443 : 80);\nconst transport = qProtocol === 'https' ? https : require('http');\n\n// --- Promise-resolving Qdrant call (same pattern as the Bedrock node) ---\nfunction qdrantCall(method, path, body) {\n  const payload = body ? JSON.stringify(body) : '';\n  return new Promise((resolve) => {\n    const req = transport.request(\n      {\n        hostname: qHostname,\n        port: qPort,\n        path,\n        method,\n        headers: {\n          'Content-Type': 'application/json',\n          'api-key': qdrantApiKey,\n          'Content-Length': Buffer.byteLength(payload),\n        },\n      },\n      (res) => {\n        const chunks = [];\n        res.on('data', (c) => chunks.push(c));\n        res.on('end', () => {\n          resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') });\n        });\n      },\n    );\n    req.on('error', (e) => resolve({ status: 0, body: 'NETWORK: ' + e.message }));\n    if (payload) req.write(payload);\n    req.end();\n  });\n}\n\nfunction deterministicUuid(input) {\n  const h = crypto.createHash('sha1').update(input).digest();\n  h[6] = (h[6] & 0x0f) | 0x50;\n  h[8] = (h[8] & 0x3f) | 0x80;\n  const hex = h.toString('hex');\n  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join('-');\n}\n\n// --- 1. Fetch text of chunks that are about to be deleted ---\nlet removed = [];\nif (Array.isArray(diff.toDeleteIds) && diff.toDeleteIds.length > 0) {\n  const r = await qdrantCall('POST', `/collections/${chunksColl}/points`, {\n    ids: diff.toDeleteIds,\n    with_payload: true,\n    with_vector: false,\n  });\n  if (r.status < 200 || r.status >= 300) {\n    throw new Error('Qdrant fetch-stale failed ' + r.status + ': ' + r.body.slice(0, 400));\n  }\n  const parsed = JSON.parse(r.body);\n  removed = (parsed.result || []).map((p) => ({\n    pointId: p.id,\n    chunkIndex: p.payload && p.payload.metadata && p.payload.metadata.chunkIndex,\n    chunkHash: p.payload && p.payload.metadata && p.payload.metadata.chunkHash,\n    previousVersionId: p.payload && p.payload.metadata && p.payload.metadata.versionId,\n    chunkText: p.payload && p.payload.content,\n  }));\n}\n\n// --- 2. Build the run record (deterministic Qdrant point id for upserts) ---\nconst runPointId = deterministicUuid(`run::${diff.documentUrl}::${diff.versionId}`);\n\nconst runRecord = {\n  runId: diff.versionId + '_' + crypto.randomBytes(3).toString('hex'),\n  timestamp: diff.versionId,\n  versionId: diff.versionId,\n  documentUrl: diff.documentUrl,\n  documentHash: diff.documentHash,\n  fullText: $('Chunk + Hash').first().json.fullText,\n  summary: diff.summary,\n  added: (diff.toInsert || []).map((c) => ({\n    pointId: c.pointId,\n    chunkIndex: c.chunkIndex,\n    chunkHash: c.chunkHash,\n    chunkText: c.chunkText,\n  })),\n  removed,\n};\n\n// --- 3. Write the run record to the runs collection ---\nconst w = await qdrantCall('PUT', `/collections/${runsColl}/points?wait=true`, {\n  points: [{ id: runPointId, vector: [0.0], payload: runRecord }],\n});\nif (w.status < 200 || w.status >= 300) {\n  throw new Error('Qdrant write-run failed ' + w.status + ': ' + w.body.slice(0, 400));\n}\n\n// --- 4. Pass through the original diff so downstream branches keep working ---\nreturn { json: { ...diff, runRecord, runPointId } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        1024
+      ],
+      "id": "630cd877-81d3-4dbd-8922-5186589ed9c5",
+      "name": "Build & Write Run Record"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://agents:8000/v1/agents/summary",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_point_id: $json.runPointId, document_url: $json.runRecord.documentUrl, version_id: $json.runRecord.versionId || $json.runRecord.timestamp, document_hash: $json.runRecord.documentHash, summary: $json.runRecord.summary, added_preview: ($json.runRecord.added || []).slice(0,5).map(a => String(a.chunkText || \"\")), removed_preview: ($json.runRecord.removed || []).slice(0,5).map(r => String(r.chunkText || \"\")) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "9f0e1a2b-3c4d-5678-9abc-def012345678",
+      "name": "HTTP: SummaryAgent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Merge SummaryAgent JSON into run payload and upsert same Qdrant point ===\nconst crypto = require('crypto');\nconst https = require('https');\n\nconst cfg = $('Set Config').first().json;\nconst base = $('Build & Write Run Record').first().json;\nconst llm = $input.first().json;\n\nconst qdrantApiKey = cfg.qdrantApiKey || '';\nconst runsColl = cfg.qdrantRunsCollection || 'regulatory_docs_runs';\n\nconst m = String(cfg.qdrantUrl).match(/^(https?):\\/\\/([^:/]+)(?::(\\d+))?/);\nif (!m) throw new Error('Invalid qdrantUrl in Set Config: ' + cfg.qdrantUrl);\nconst qProtocol = m[1];\nconst qHostname = m[2];\nconst qPort = m[3] ? parseInt(m[3], 10) : (qProtocol === 'https' ? 443 : 80);\nconst transport = qProtocol === 'https' ? https : require('http');\n\nfunction qdrantCall(method, path, body) {\n  const payload = body ? JSON.stringify(body) : '';\n  return new Promise((resolve) => {\n    const req = transport.request(\n      {\n        hostname: qHostname,\n        port: qPort,\n        path,\n        method,\n        headers: {\n          'Content-Type': 'application/json',\n          'api-key': qdrantApiKey,\n          'Content-Length': Buffer.byteLength(payload),\n        },\n      },\n      (res) => {\n        const chunks = [];\n        res.on('data', (c) => chunks.push(c));\n        res.on('end', () => {\n          resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') });\n        });\n      },\n    );\n    req.on('error', (e) => resolve({ status: 0, body: 'NETWORK: ' + e.message }));\n    if (payload) req.write(payload);\n    req.end();\n  });\n}\n\nconst runRecord = { ...base.runRecord };\nrunRecord.llmSummary = llm.llm_summary || llm.llmSummary || '';\nrunRecord.materialityNotes = llm.materiality_notes || llm.materialityNotes || '';\nrunRecord.agentsModelId = llm.model_id || llm.modelId || '';\n\nconst w = await qdrantCall('PUT', `/collections/${runsColl}/points?wait=true`, {\n  points: [{ id: base.runPointId, vector: [0.0], payload: runRecord }],\n});\nif (w.status < 200 || w.status >= 300) {\n  throw new Error('Qdrant merge-llm failed ' + w.status + ': ' + w.body.slice(0, 400));\n}\n\nreturn { json: { ...base, runRecord } };\n",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "8e7d6c5b-4a39-2187-6543-10fedcba9876",
+      "name": "Code: Merge LLM Into Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const doc = \"https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/regulation-14-as-of-02-26.pdf\";\nconst i = $input.first().json || {};\nreturn {\n  json: {\n    ...i,\n    documentUrl: doc,\n    qdrantUrl: 'http://qdrant:6333',\n    qdrantCollection: 'regulatory_docs',\n    qdrantApiKey: '',\n    agentsApiUrl: 'http://agents:8000',\n  },\n};",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "1a2b3c4d-5e6f-7890-abcd-ef1234567891",
+      "name": "Code: Chat Scope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1520,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://agents:8000/v1/pipelines/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json.chatInput || $json.text || $json.message || \"\", document_url: $json.documentUrl, qdrant_url: $json.qdrantUrl, qdrant_collection: $json.qdrantCollection, qdrant_api_key: $json.qdrantApiKey, top_k: 8 }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "2b3c4d5e-6f70-89ab-cdef-123456789012",
+      "name": "HTTP: ChatPipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "message": "={{ $json.reply || $json.data?.reply || $json.body?.reply }}",
+        "options": {}
+      },
+      "id": "3c4d5e6f-7081-92ab-cdef-234567890123",
+      "name": "Chat: Send Reply",
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.2,
+      "position": [
+        -1040,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "path": "regulatory-compare",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "4d5e6f70-8192-a3bc-def3456789012",
+      "name": "Webhook: Compare",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1760,
+        800
+      ],
+      "webhookId": "c0ffee00-1111-2222-3333-444455556666"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://agents:8000/v1/agents/compare",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body || $json) }}",
+        "options": {}
+      },
+      "id": "5e6f7081-92a3-b4cd-ef45678901234",
+      "name": "HTTP: CompareAgent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1520,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "6f708192-a3b4-c5de-f567890123456",
+      "name": "Respond: Compare",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1280,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "path": "regulatory-orchestrate",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "708192a3-b4c5-d6ef-6789012345678",
+      "name": "Webhook: Orchestrate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1760,
+        1000
+      ],
+      "webhookId": "d0ffee00-aaaa-bbbb-cccc-dddddddddddd"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://agents:8000/v1/orchestrate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body || $json) }}",
+        "options": {}
+      },
+      "id": "8192a3b4-c5d6-e7f8-8901234567890",
+      "name": "HTTP: Orchestrate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1520,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "a3b4c5d6-e7f8-9012-34567890abcd",
+      "name": "Respond: Orchestrate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1040,
+        940
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Config": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Chunk + Hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk + Hash": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Scroll Existing IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant: Scroll Existing IDs": {
+      "main": [
+        [
+          {
+            "node": "Compute Diff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Diff": {
+      "main": [
+        [
+          {
+            "node": "Build & Write Run Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split: New Chunks": {
+      "main": [
+        [
+          {
+            "node": "Bedrock: Embed Chunk (SigV4)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Qdrant Point": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Upsert Point",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Any Stale Chunks?": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Delete Stale Points",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code: Chat Scope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bedrock Chat Model": {
+      "ai_languageModel": []
+    },
+    "Qdrant Vector Store (Tool)": {
+      "ai_tool": []
+    },
+    "Bedrock Embeddings (Retrieval)": {
+      "ai_embedding": []
+    },
+    "Bedrock: Embed Chunk (SigV4)": {
+      "main": [
+        [
+          {
+            "node": "Build Qdrant Point",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build & Write Run Record": {
+      "main": [
+        [
+          {
+            "node": "HTTP: SummaryAgent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: SummaryAgent": {
+      "main": [
+        [
+          {
+            "node": "Code: Merge LLM Into Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Merge LLM Into Run": {
+      "main": [
+        [
+          {
+            "node": "Split: New Chunks",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If: Any Stale Chunks?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Chat Scope": {
+      "main": [
+        [
+          {
+            "node": "HTTP: ChatPipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: ChatPipeline": {
+      "main": [
+        [
+          {
+            "node": "Chat: Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Compare": {
+      "main": [
+        [
+          {
+            "node": "HTTP: CompareAgent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: CompareAgent": {
+      "main": [
+        [
+          {
+            "node": "Respond: Compare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Orchestrate": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Orchestrate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Orchestrate": {
+      "main": [
+        [
+          {
+            "node": "Respond: Orchestrate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "dc4636e726fd28b1ee25dbca8150fb567870b9bc3d7fa140b7cf498ddb5df275"
+  }
+}

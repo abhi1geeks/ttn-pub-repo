@@ -1,0 +1,22 @@
+use_case,feature_id,feature,description,business_impact
+UC1,UC1-001,Scheduled ingest (orchestrator),N8N or equivalent runs per-source cadence; fetch HTML/PDF; store raw snapshot + hash.,Removes ad-hoc manual checks; proves repeatable monitoring.
+UC1,UC1-002,Baseline library + metadata,Versioned docs per jurisdiction: source URL; fetched_at; content_hash; effective_date if known.,Changes are attributable and replayable for audits / leadership questions.
+UC1,UC1-003,Change detection (embedding + signal),Chunk/embed vs prior baseline; flag changed sections; optional keyword flags.,Surfaces updates without rereading entire statute libraries.
+UC1,UC1-004,Readable structural diff,Section/clause-level redline or side-by-side; not only blob diff.,Executives trust the UI because they see exactly what moved.
+UC1,UC1-005,LLM relevance score + summary,Small LLM scores materiality to GLI; cites quoted spans; plain-English impact.,Cuts reviewer noise — largest daily time save vs raw diff lists.
+UC1,UC1-006,HITL review queue,Approve/dismiss/assign; reviewer id; timestamp; optional reason.,Humans stay accountable; avoids blind automation risk.
+UC1,UC1-007,Draft GLIAccess update package,Generate proposed edits to requirements; templates; docs; test criteria with citations.,Turns detection into actionable certification updates — core revenue protection.
+UC1,UC1-008,SharePoint MCP publish,On approval push structured package via MCP; retries; idempotent naming.,Shows enterprise handoff without custom GLIAccess API in POC.
+UC1,UC1-009,Stakeholder notifications,Email and/or Teams webhook; templates for staff vs operator vs regulator placeholders.,Right stakeholders learn fast — fewer certification surprises.
+UC1,UC1-010,Notification localization stub,EN-only for POC; optional ES toggle with locked static spans if time.,Shows global readiness without blocking spine.
+UC2,UC2-001,Curated mini-corpus,NV/NY excerpts + GLI standard snippets + optional SharePoint PDF samples.,Bounded trustworthy corpus for leadership demo.
+UC2,UC2-002,Retrieval + GenAI answer,Question → top chunks → answer with inline citation markers to chunk IDs.,Cuts internal research time; fewer wrong answers to staff.
+UC2,UC2-003,Product-line filters,Tag chunks by product family for scoped retrieval.,Matches how labs organize work; improves answer precision.
+UC3,UC3-001,Horizon backlog UI,List/cards for upcoming bills or draft rules with status.,Leadership sees proactive compliance posture.
+UC3,UC3-002,Seeded bill / proposal record,Manual seed 1–2 bills with metadata + external link.,Proves UX without multi-state scrapers.
+UC3,UC3-003,Automated bill ingestion,Scheduled scraper/API for bill status across jurisdictions.,Removes manual bill tracking at scale.
+XC,XC-001,Human-in-the-loop (HITL),No AI-only publish to SharePoint or external notification of unreviewed AI drafts.,Trust + liability control for regulated industry.
+XC,XC-002,Mandatory citations,LLM outputs must cite retrieved spans or clause IDs.,Prevents hallucinated certification guidance.
+XC,XC-003,Audit trail & evidence locker,Append-only log: hashes; model/prompt ids; reviewer actions; SharePoint file ids.,Demonstrates governance for execs and future SOC2 path.
+XC,XC-004,Source-health monitoring,Per-URL last success; HTTP code; parse rate; stale alerts.,Prevents silent scraper failure — missed regulatory changes.
+XC,XC-005,Security posture narrative,Document data handling; AI governance gaps honestly; roadmap to SOC2.,Sets enterprise buyer expectations without overclaiming.
