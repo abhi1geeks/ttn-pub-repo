@@ -1,6 +1,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AgentsPanel } from "./components/AgentsPanel";
+import { AssistantChatDock } from "./components/AssistantChatDock";
+import { LoginGate } from "./components/LoginGate";
 import { PageWiseReadableDiff, UnifiedDiffView, DiffLineLegendFilter } from "./components/DiffViews";
 import {
   HitlReviewBar,
@@ -19,7 +20,7 @@ import {
   type DiffLineFilter,
 } from "./lib/diff";
 import { fmtTs } from "./lib/format";
-import { hitlStorageKey } from "./lib/uc1";
+import { hitlStorageKey, clampHitlReason, parseHitlReview, type HitlReviewPayload } from "./lib/uc1";
 
 type Run = {
   documentUrl?: string;
@@ -40,6 +41,21 @@ type Run = {
   fullText?: string;
   /** When the ingest pipeline stamps it (optional); not the same as logical diff pages. */
   pdfPageCount?: number;
+  pdfPageCountSource?: string;
+  /** XC-004: last HTTP fetch + headers snapshot at ingest (from n8n). */
+  sourceIngest?: {
+    httpStatus?: number | null;
+    fetchedAt?: string | null;
+    etag?: string | null;
+    lastModified?: string | null;
+    contentLength?: string | null;
+    bytes?: number | null;
+    productLine?: string | null;
+    jurisdiction?: string | null;
+    effectiveDate?: string | null;
+    error?: string | null;
+  };
+  hitlReview?: HitlReviewPayload;
   added?: { chunkIndex?: number; chunkText?: string }[];
   removed?: { chunkIndex?: number; chunkText?: string; previousVersionId?: string }[];
 };
@@ -60,13 +76,23 @@ type QdrantPoint = {
       chunkIndex?: number;
       versionId?: string;
       documentHash?: string;
+      productLine?: string;
+      jurisdiction?: string;
+      effectiveDate?: string;
+      pdfPageCount?: number;
+      chunkPageStart?: number;
+      chunkPageEnd?: number;
+      ingestFetchedAt?: string;
+      ingestHttpStatus?: number;
     };
     content?: string;
   };
 };
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const r = await fetch(url);
+type AuthPhase = "loading" | "open" | "need_login" | "authed";
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(url, { ...init, credentials: init?.credentials ?? "same-origin" });
   if (!r.ok) {
     const text = await r.text();
     throw new Error(text || r.statusText);
@@ -106,8 +132,13 @@ export default function App() {
   const [loadingChunks, setLoadingChunks] = useState(false);
 
   const [hitlStatus, setHitlStatus] = useState<HitlStatus>("none");
+  const [hitlReason, setHitlReason] = useState("");
+  const [hitlSaving, setHitlSaving] = useState(false);
+  const [hitlPersistError, setHitlPersistError] = useState<string | null>(null);
 
   const [bffAgentsProxy, setBffAgentsProxy] = useState(false);
+  const [authPhase, setAuthPhase] = useState<AuthPhase>("loading");
+  const [sessionUser, setSessionUser] = useState<string | null>(null);
   const [impactSessionByVersion, setImpactSessionByVersion] = useState<Record<string, ImpactSessionOverride>>({});
   const [impactGenerating, setImpactGenerating] = useState(false);
   const [impactError, setImpactError] = useState<string | null>(null);
@@ -115,13 +146,25 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const h = await fetchJson<{ agentsProxy?: boolean }>("/api/health");
+        const h = await fetchJson<{ agentsProxy?: boolean; authRequired?: boolean }>("/api/health");
         setBffAgentsProxy(Boolean(h.agentsProxy));
+        if (!h.authRequired) {
+          setAuthPhase("open");
+          return;
+        }
+        const me = await fetchJson<{ user: string | null }>("/api/auth/me");
+        setSessionUser(me.user);
+        setAuthPhase(me.user ? "authed" : "need_login");
       } catch {
         setBffAgentsProxy(false);
+        setAuthPhase("open");
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (tab === "agents") setTab("doc");
+  }, [tab]);
 
   const loadRuns = useCallback(async () => {
     setLoadingRuns(true);
@@ -138,8 +181,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (authPhase !== "open" && authPhase !== "authed") return;
     void loadRuns();
-  }, [loadRuns]);
+  }, [authPhase, loadRuns]);
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    } catch {
+      /* ignore */
+    }
+    setSessionUser(null);
+    setAuthPhase("need_login");
+    setRuns(null);
+    setRunsError(null);
+    setLoadingRuns(false);
+  }, []);
 
   const docUrls = useMemo(() => {
     if (!runs) return [];
@@ -176,31 +233,96 @@ export default function App() {
   }, [selectedUrl, currentRun]);
 
   useEffect(() => {
-    if (!hitlKey) {
+    if (!hitlKey || !currentRun) {
       setHitlStatus("none");
+      setHitlReason("");
+      return;
+    }
+    const parsed = parseHitlReview(currentRun.hitlReview);
+    if (parsed) {
+      setHitlStatus(parsed.status);
+      setHitlReason(parsed.reason ?? "");
       return;
     }
     try {
       const v = sessionStorage.getItem(hitlKey);
-      if (v === "acknowledged" || v === "flagged" || v === "none") setHitlStatus(v);
-      else setHitlStatus("none");
+      if (v === "acknowledged" || v === "flagged") {
+        setHitlStatus(v);
+        setHitlReason("");
+      } else {
+        setHitlStatus("none");
+        setHitlReason("");
+      }
     } catch {
       setHitlStatus("none");
+      setHitlReason("");
     }
-  }, [hitlKey]);
+  }, [hitlKey, currentRun]);
 
   const persistHitl = useCallback(
-    (next: HitlStatus) => {
-      if (!hitlKey) return;
-      try {
-        if (next === "none") sessionStorage.removeItem(hitlKey);
-        else sessionStorage.setItem(hitlKey, next);
-      } catch {
-        /* ignore quota / private mode */
+    async (next: HitlStatus) => {
+      setHitlPersistError(null);
+      if (!hitlKey || !currentRun) return;
+      const runPointId = currentRun.runPointId;
+      const note = clampHitlReason(hitlReason);
+
+      if (!runPointId) {
+        try {
+          if (next === "none") sessionStorage.removeItem(hitlKey);
+          else sessionStorage.setItem(hitlKey, next);
+        } catch {
+          /* ignore */
+        }
+        setHitlStatus(next);
+        if (next === "none") setHitlReason("");
+        return;
       }
-      setHitlStatus(next);
+
+      setHitlSaving(true);
+      try {
+        const r = await fetch("/api/runs/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runPointId,
+            status: next,
+            reason: next === "none" ? "" : note,
+          }),
+        });
+        let data: { error?: string; hitlReview?: HitlReviewPayload | null } = {};
+        try {
+          data = (await r.json()) as typeof data;
+        } catch {
+          data = {};
+        }
+        if (!r.ok) {
+          setHitlPersistError(typeof data.error === "string" ? data.error : r.statusText || "Save failed");
+          return;
+        }
+        try {
+          sessionStorage.removeItem(hitlKey);
+        } catch {
+          /* ignore */
+        }
+        setHitlStatus(next);
+        if (next === "none") setHitlReason("");
+        const returned = data.hitlReview;
+        setRuns((prev) => {
+          if (!prev) return prev;
+          return prev.map((row) => {
+            if (String(row.runPointId ?? "") !== runPointId) return row;
+            if (next === "none" || returned == null) {
+              const { hitlReview: _drop, ...rest } = row;
+              return rest as Run;
+            }
+            return { ...row, hitlReview: returned };
+          });
+        });
+      } finally {
+        setHitlSaving(false);
+      }
     },
-    [hitlKey],
+    [hitlKey, currentRun, hitlReason],
   );
 
   useEffect(() => {
@@ -393,12 +515,49 @@ export default function App() {
   const tabTrigger =
     "rounded-lg px-4 py-2.5 text-sm font-medium text-zinc-600 outline-none transition data-[state=active]:bg-white data-[state=active]:text-zinc-900 data-[state=active]:shadow-sm";
 
+  const heroAuthSlot =
+    authPhase === "authed" && sessionUser ? (
+      <div className="flex flex-col items-stretch gap-2 sm:items-end">
+        <span className="rounded-full bg-white/10 px-2.5 py-1 text-center text-[11px] font-mono text-emerald-100/95">
+          {sessionUser}
+        </span>
+        <button
+          type="button"
+          onClick={() => void logout()}
+          className="rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/10"
+        >
+          Sign out
+        </button>
+      </div>
+    ) : undefined;
+
   const shell = (body: ReactNode) => (
     <div className="min-h-screen bg-gradient-to-b from-zinc-100 to-zinc-200/80">
-      <Uc1Hero />
+      <Uc1Hero rightSlot={heroAuthSlot} />
       {body}
     </div>
   );
+
+  if (authPhase === "loading") {
+    return shell(
+      <div className="mx-auto flex max-w-lg flex-col items-center px-6 py-20">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
+        <p className="mt-6 text-center text-sm font-medium text-zinc-700">Checking session…</p>
+        <p className="mt-1 text-center text-xs text-zinc-500">Regulatory web</p>
+      </div>,
+    );
+  }
+
+  if (authPhase === "need_login") {
+    return shell(
+      <LoginGate
+        onLoggedIn={(u) => {
+          setSessionUser(u);
+          setAuthPhase("authed");
+        }}
+      />,
+    );
+  }
 
   if (loadingRuns) {
     return shell(
@@ -450,7 +609,8 @@ export default function App() {
   }
 
   return shell(
-    <main className="mx-auto max-w-[1600px] px-6 pb-16 pt-8">
+    <>
+      <main className="mx-auto max-w-[1600px] px-6 pb-24 pt-8">
       {selectedUrl ? (
         <div className="space-y-6">
           <SourceIdentityCard
@@ -525,6 +685,10 @@ export default function App() {
                 status={hitlStatus}
                 onChange={persistHitl}
                 disabled={!currentRun || !baselineRun}
+                optionalNote={hitlReason}
+                onOptionalNoteChange={setHitlReason}
+                persistError={hitlPersistError}
+                saving={hitlSaving}
               />
 
               <Tabs.Root value={tab} onValueChange={setTab} className="w-full">
@@ -533,7 +697,6 @@ export default function App() {
                     { id: "doc", label: "Readable diff", hint: "UC1-004" },
                     { id: "chunks", label: "Embedding delta", hint: "UC1-003" },
                     { id: "now", label: "Live index", hint: "UC1-002" },
-                    { id: "agents", label: "Agents", hint: "UC2 + guardrails" },
                   ].map((t) => (
                     <Tabs.Trigger key={t.id} value={t.id} className={tabTrigger}>
                       <span className="block leading-tight">{t.label}</span>
@@ -543,6 +706,11 @@ export default function App() {
                     </Tabs.Trigger>
                   ))}
                 </Tabs.List>
+                <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+                  <span className="font-medium text-zinc-600">Assistant:</span> use the{" "}
+                  <span className="font-medium text-emerald-800">chat button</span> in the bottom-right for grounded Q&amp;A
+                  (same scope as this document and compare context).
+                </p>
 
                 <Tabs.Content value="doc" className="mt-6 focus:outline-none">
                   {!baselineRun ? (
@@ -742,19 +910,10 @@ export default function App() {
                     </>
                   )}
                 </Tabs.Content>
-
-                <Tabs.Content value="agents" className="mt-6 focus:outline-none">
-                  <AgentsPanel
-                    documentUrl={selectedUrl}
-                    compareBaselineText={ingestCompareBaselineText}
-                    compareCurrentText={ingestCompareCurrentText}
-                    compareChunkChanges={ingestCompareChunkChanges}
-                  />
-                </Tabs.Content>
               </Tabs.Root>
             </div>
 
-            <aside className="space-y-5 lg:sticky lg:top-6 lg:self-start">
+            <aside className="relative z-0 space-y-5 lg:sticky lg:top-6 lg:self-start">
               <ImpactSummaryCard
                 executiveSummary={impactExecutive}
                 materialityNotes={impactMateriality}
@@ -766,25 +925,20 @@ export default function App() {
                 generatingImpact={impactGenerating}
                 impactError={impactError}
               />
-              <div className="rounded-2xl border border-zinc-200 bg-white p-5 text-xs leading-relaxed text-zinc-600 shadow-sm ring-1 ring-zinc-100">
-                <p className="font-semibold text-zinc-800">UC1 scope in this POC</p>
-                <ul className="mt-3 list-inside list-disc space-y-1.5 marker:text-emerald-600">
-                  <li>Scheduled ingest (UC1-001) — configure cadence in n8n.</li>
-                  <li>Versioned metadata per URL (UC1-002) — runs + chunk payloads.</li>
-                  <li>Embedding change signal (UC1-003) — chunk delta tab.</li>
-                  <li>Readable text diff (UC1-004) — diff tab.</li>
-                  <li>Impact summary (UC1-005) — materiality score + dual narrative; generate via agents or n8n merge.</li>
-                  <li>Agents API smoke tests (UC2 + guardrails) — Agents tab via BFF <code className="rounded bg-zinc-100 px-1">/api/agents/*</code>.</li>
-                </ul>
-                <p className="mt-3 border-t border-zinc-100 pt-3 text-zinc-500">
-                  GLI packages, SharePoint, notifications, and full HITL workflows are out of scope for this UI slice.
-                </p>
-              </div>
             </aside>
           </div>
         </div>
       ) : null}
-    </main>,
+      </main>
+      {selectedUrl ? (
+        <AssistantChatDock
+          documentUrl={selectedUrl}
+          compareBaselineText={ingestCompareBaselineText}
+          compareCurrentText={ingestCompareCurrentText}
+          compareChunkChanges={ingestCompareChunkChanges}
+        />
+      ) : null}
+    </>,
   );
 }
 

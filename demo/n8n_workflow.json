@@ -11,8 +11,8 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -688,
-        112
+        -2640,
+        -80
       ]
     },
     {
@@ -26,8 +26,8 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -1120,
-        832
+        -2640,
+        900
       ]
     },
     {
@@ -41,8 +41,8 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -1824,
-        144
+        -2640,
+        80
       ]
     },
     {
@@ -61,8 +61,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        -1760,
-        1024
+        -2640,
+        1000
       ]
     },
     {
@@ -152,6 +152,24 @@
               "name": "awsSessionToken",
               "value": "",
               "type": "string"
+            },
+            {
+              "id": "n-pl",
+              "name": "productLine",
+              "value": "default",
+              "type": "string"
+            },
+            {
+              "id": "n-jd",
+              "name": "jurisdiction",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "n-ed",
+              "name": "effectiveDate",
+              "value": "",
+              "type": "string"
             }
           ]
         },
@@ -162,8 +180,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -1536,
-        1024
+        -2360,
+        1000
       ]
     },
     {
@@ -172,7 +190,8 @@
         "options": {
           "response": {
             "response": {
-              "responseFormat": "file"
+              "responseFormat": "file",
+              "fullResponse": true
             }
           }
         }
@@ -182,8 +201,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -1312,
-        1024
+        -2080,
+        1000
       ],
       "notes": "Swap this for a Firecrawl / crawl4ai node if the URL is an HTML page that links to the PDF rather than the PDF itself."
     },
@@ -197,21 +216,21 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        -1088,
-        1024
+        -1520,
+        1000
       ]
     },
     {
       "parameters": {
-        "jsCode": "// === Chunk + content-hash + deterministic point IDs ===\nconst crypto = require('crypto');\n\nconst rawText = ($input.first().json.text || '').toString();\nif (!rawText || rawText.trim().length < 50) {\n  throw new Error('No usable text extracted from PDF');\n}\n\n// Light normalisation so cosmetic re-flows do not invalidate hashes.\nconst text = rawText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[\\t ]+/g, ' ')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nconst cfg = $('Set Config').first().json;\nconst documentUrl = cfg.documentUrl;\nconst chunkSize = cfg.chunkSize || 1500;\nconst chunkOverlap = cfg.chunkOverlap || 200;\n\n// Soft-boundary recursive splitter: prefer paragraph -> sentence -> word.\nfunction splitText(t, size, overlap) {\n  const out = [];\n  let start = 0;\n  while (start < t.length) {\n    let end = Math.min(start + size, t.length);\n    if (end < t.length) {\n      const minBreak = start + Math.floor(size * 0.5);\n      const para = t.lastIndexOf('\\n\\n', end);\n      const sent = t.lastIndexOf('. ', end);\n      const space = t.lastIndexOf(' ', end);\n      if (para > minBreak) end = para + 2;\n      else if (sent > minBreak) end = sent + 2;\n      else if (space > minBreak) end = space + 1;\n    }\n    const slice = t.slice(start, end).trim();\n    if (slice.length) out.push(slice);\n    if (end >= t.length) break;\n    start = Math.max(end - overlap, start + 1);\n  }\n  return out;\n}\n\nconst chunks = splitText(text, chunkSize, chunkOverlap);\nconst versionId = new Date().toISOString();\nconst documentHash = crypto.createHash('sha256').update(text).digest('hex');\n\n// Deterministic UUIDv5-style ID derived from input string.\nfunction deterministicUuid(input) {\n  const h = crypto.createHash('sha1').update(input).digest();\n  h[6] = (h[6] & 0x0f) | 0x50; // version 5\n  h[8] = (h[8] & 0x3f) | 0x80; // RFC 4122 variant\n  const hex = h.toString('hex');\n  return [\n    hex.slice(0, 8),\n    hex.slice(8, 12),\n    hex.slice(12, 16),\n    hex.slice(16, 20),\n    hex.slice(20, 32)\n  ].join('-');\n}\n\nreturn chunks.map((chunkText, index) => {\n  const chunkHash = crypto.createHash('sha256').update(chunkText).digest('hex');\n  const pointId = deterministicUuid(`${documentUrl}::${chunkHash}`);\n  const out = {\n    json: {\n      pointId, chunkHash, chunkIndex: index, chunkText,\n      documentUrl, documentHash, versionId,\n    }\n  };\n  if (index === 0) out.json.fullText = text;   // <-- only on the first item\n  return out;\n});"
+        "jsCode": "// === Chunk + content-hash + deterministic point IDs + ingest metadata (UC2-003 / XC-004) ===\nconst crypto = require('crypto');\n\nconst rawText = ($input.first().json.text || '').toString();\nif (!rawText || rawText.trim().length < 50) {\n  throw new Error('No usable text extracted from PDF');\n}\n\n// Light normalisation so cosmetic re-flows do not invalidate hashes.\n// Preserve form-feed page breaks (\\f) for logical PDF-style pagination in the web UI.\nconst text = rawText\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[\\t ]+/g, ' ')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nconst cfg = $('Set Config').first().json;\nconst prov = $('Code: Ingest Provenance').first().json || {};\nconst documentUrl = cfg.documentUrl;\nconst chunkSize = cfg.chunkSize || 1500;\nconst chunkOverlap = cfg.chunkOverlap || 200;\nconst productLine = String(cfg.productLine || 'default').trim() || 'default';\nconst jurisdiction = String(cfg.jurisdiction || '').trim();\nconst effectiveDate = String(cfg.effectiveDate || '').trim();\n\n// Soft-boundary recursive splitter: prefer paragraph -> sentence -> word.\nfunction splitText(t, size, overlap) {\n  const out = [];\n  let start = 0;\n  while (start < t.length) {\n    let end = Math.min(start + size, t.length);\n    if (end < t.length) {\n      const minBreak = start + Math.floor(size * 0.5);\n      const para = t.lastIndexOf('\\n\\n', end);\n      const sent = t.lastIndexOf('. ', end);\n      const space = t.lastIndexOf(' ', end);\n      if (para > minBreak) end = para + 2;\n      else if (sent > minBreak) end = sent + 2;\n      else if (space > minBreak) end = space + 1;\n    }\n    const slice = t.slice(start, end).trim();\n    if (slice.length) out.push(slice);\n    if (end >= t.length) break;\n    start = Math.max(end - overlap, start + 1);\n  }\n  return out;\n}\n\nconst chunks = splitText(text, chunkSize, chunkOverlap);\nconst versionId = new Date().toISOString();\nconst documentHash = crypto.createHash('sha256').update(text).digest('hex');\n\nconst pdfParts = rawText.split('\\f');\nlet pdfPageCount = Math.max(1, pdfParts.length);\nconst extractMeta = $('Extract PDF Text').first().json || {};\nconst extPages = Number(extractMeta.numpages ?? extractMeta.numPages ?? extractMeta.pageCount);\nif (Number.isFinite(extPages) && extPages > 0) {\n  pdfPageCount = Math.max(pdfPageCount, Math.floor(extPages));\n}\nconst pdfPageCountSource =\n  pdfParts.length > 1 ? 'formfeed' : Number.isFinite(extPages) && extPages > 0 ? 'extractor' : 'single_block';\n\n// Deterministic UUIDv5-style ID derived from input string.\nfunction deterministicUuid(input) {\n  const h = crypto.createHash('sha1').update(input).digest();\n  h[6] = (h[6] & 0x0f) | 0x50; // version 5\n  h[8] = (h[8] & 0x3f) | 0x80; // RFC 4122 variant\n  const hex = h.toString('hex');\n  return [\n    hex.slice(0, 8),\n    hex.slice(8, 12),\n    hex.slice(12, 16),\n    hex.slice(16, 20),\n    hex.slice(20, 32),\n  ].join('-');\n}\n\nconst n = chunks.length;\n\nreturn chunks.map((chunkText, index) => {\n  const chunkHash = crypto.createHash('sha256').update(chunkText).digest('hex');\n  const pointId = deterministicUuid(`${documentUrl}::${chunkHash}`);\n  const lo = Math.floor((index / n) * pdfPageCount) + 1;\n  const hi = Math.min(pdfPageCount, Math.ceil(((index + 1) / n) * pdfPageCount));\n  const out = {\n    json: {\n      pointId,\n      chunkHash,\n      chunkIndex: index,\n      chunkText,\n      documentUrl,\n      documentHash,\n      versionId,\n      productLine,\n      jurisdiction,\n      effectiveDate,\n      pdfPageCount,\n      pdfPageCountSource,\n      chunkPageStart: lo,\n      chunkPageEnd: Math.max(lo, hi),\n      ingestHttpStatus: prov.ingestHttpStatus ?? null,\n      ingestFetchedAt: prov.ingestFetchedAt || null,\n      ingestContentLength: prov.ingestContentLength ?? null,\n      ingestEtag: prov.ingestEtag ?? null,\n      ingestLastModified: prov.ingestLastModified ?? null,\n      ingestBytes: prov.ingestBytes ?? null,\n      ingestError: prov.ingestError ?? null,\n    },\n  };\n  if (index === 0) out.json.fullText = text;\n  return out;\n});\n"
       },
       "id": "9176b1da-724c-4ca3-a24e-3a0df50e7fca",
       "name": "Chunk + Hash",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -864,
-        1024
+        -1240,
+        1000
       ]
     },
     {
@@ -228,22 +247,22 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -640,
-        1024
+        -960,
+        1000
       ],
       "notes": "Returns IDs of all chunks already stored for this documentUrl. The 'metadata.documentUrl' field needs a Qdrant payload index for performant filtering (see README sticky)."
     },
     {
       "parameters": {
-        "jsCode": "// === Diff: which chunk IDs are new, which are stale ===\nconst newChunks = $('Chunk + Hash').all().map(it => it.json);\nconst scroll = $input.first().json;\n\nconst existingPoints = (scroll && scroll.result && scroll.result.points) || [];\nconst existingIds = new Set(existingPoints.map(p => String(p.id)));\nconst newIdSet = new Set(newChunks.map(c => c.pointId));\n\nconst toInsert = newChunks.filter(c => !existingIds.has(c.pointId));\nconst toDeleteIds = existingPoints\n  .filter(p => !newIdSet.has(String(p.id)))\n  .map(p => p.id);\n\nreturn [{\n  json: {\n    summary: {\n      totalChunks: newChunks.length,\n      newChunks: toInsert.length,\n      removedChunks: toDeleteIds.length,\n      unchangedChunks: newChunks.length - toInsert.length\n    },\n    toInsert,\n    toDeleteIds,\n    versionId: newChunks[0] ? newChunks[0].versionId : null,\n    documentUrl: newChunks[0] ? newChunks[0].documentUrl : null,\n    documentHash: newChunks[0] ? newChunks[0].documentHash : null\n  }\n}];\n"
+        "jsCode": "// === Diff: which chunk IDs are new, which are stale + carry ingest metadata to run record ===\nconst newChunks = $('Chunk + Hash').all().map((it) => it.json);\nconst scroll = $input.first().json;\n\nconst existingPoints = (scroll && scroll.result && scroll.result.points) || [];\nconst existingIds = new Set(existingPoints.map((p) => String(p.id)));\nconst newIdSet = new Set(newChunks.map((c) => c.pointId));\n\nconst toInsert = newChunks.filter((c) => !existingIds.has(c.pointId));\nconst toDeleteIds = existingPoints.filter((p) => !newIdSet.has(String(p.id))).map((p) => p.id);\n\nconst f = newChunks[0] || {};\nconst sourceIngest = {\n  httpStatus: f.ingestHttpStatus ?? null,\n  fetchedAt: f.ingestFetchedAt || null,\n  etag: f.ingestEtag ?? null,\n  lastModified: f.ingestLastModified ?? null,\n  contentLength: f.ingestContentLength ?? null,\n  bytes: f.ingestBytes ?? null,\n  productLine: f.productLine ?? null,\n  jurisdiction: f.jurisdiction ?? null,\n  effectiveDate: f.effectiveDate ?? null,\n  error: f.ingestError ?? null,\n};\n\nreturn [\n  {\n    json: {\n      summary: {\n        totalChunks: newChunks.length,\n        newChunks: toInsert.length,\n        removedChunks: toDeleteIds.length,\n        unchangedChunks: newChunks.length - toInsert.length,\n      },\n      toInsert,\n      toDeleteIds,\n      versionId: f.versionId || null,\n      documentUrl: f.documentUrl || null,\n      documentHash: f.documentHash || null,\n      pdfPageCount: f.pdfPageCount,\n      pdfPageCountSource: f.pdfPageCountSource,\n      sourceIngest,\n    },\n  },\n];\n"
       },
       "id": "bf47c7f1-ad51-49b4-9644-3d74446fb0c9",
       "name": "Compute Diff",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -416,
-        1024
+        -680,
+        1000
       ]
     },
     {
@@ -256,22 +275,22 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        32,
-        928
+        -680,
+        1280
       ]
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Combine the chunk metadata with the embedding into one Qdrant point.\nconst chunk = $('Split: New Chunks').item.json;\nconst embed = $input.item.json;\n\nreturn {\n  json: {\n    point: {\n      id: chunk.pointId,\n      vector: embed.embedding,\n      payload: {\n        content: chunk.chunkText,\n        metadata: {\n          chunkHash: chunk.chunkHash,\n          chunkIndex: chunk.chunkIndex,\n          documentUrl: chunk.documentUrl,\n          documentHash: chunk.documentHash,\n          versionId: chunk.versionId\n        }\n      }\n    }\n  }\n};\n"
+        "jsCode": "// Combine the chunk metadata with the embedding into one Qdrant point (extended metadata).\nconst chunk = $('Split: New Chunks').item.json;\nconst embed = $input.item.json;\n\nreturn {\n  json: {\n    point: {\n      id: chunk.pointId,\n      vector: embed.embedding,\n      payload: {\n        content: chunk.chunkText,\n        metadata: {\n          chunkHash: chunk.chunkHash,\n          chunkIndex: chunk.chunkIndex,\n          documentUrl: chunk.documentUrl,\n          documentHash: chunk.documentHash,\n          versionId: chunk.versionId,\n          productLine: chunk.productLine,\n          jurisdiction: chunk.jurisdiction,\n          effectiveDate: chunk.effectiveDate,\n          pdfPageCount: chunk.pdfPageCount,\n          pdfPageCountSource: chunk.pdfPageCountSource,\n          chunkPageStart: chunk.chunkPageStart,\n          chunkPageEnd: chunk.chunkPageEnd,\n          ingestHttpStatus: chunk.ingestHttpStatus,\n          ingestFetchedAt: chunk.ingestFetchedAt,\n          ingestEtag: chunk.ingestEtag,\n          ingestLastModified: chunk.ingestLastModified,\n          ingestContentLength: chunk.ingestContentLength,\n          ingestBytes: chunk.ingestBytes,\n          ingestError: chunk.ingestError,\n        },\n      },\n    },\n  },\n};\n"
       },
       "id": "cc4d8092-27ac-47b3-8d0f-07006b318e5d",
       "name": "Build Qdrant Point",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
-        928
+        -400,
+        1500
       ]
     },
     {
@@ -288,8 +307,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        704,
-        928
+        -120,
+        1500
       ]
     },
     {
@@ -321,8 +340,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        32,
-        1120
+        160,
+        1280
       ]
     },
     {
@@ -339,8 +358,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        256,
-        1120
+        160,
+        1500
       ]
     },
     {
@@ -358,8 +377,8 @@
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.3,
       "position": [
-        -1760,
-        496
+        -2640,
+        280
       ],
       "webhookId": "b90525a6-3580-45d1-b84a-54af10d018d6"
     },
@@ -374,8 +393,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2,
       "position": [
-        -1504,
-        288
+        1040,
+        280
       ]
     },
     {
@@ -388,8 +407,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatAwsBedrock",
       "typeVersion": 1,
       "position": [
-        -1536,
-        512
+        1040,
+        500
       ]
     },
     {
@@ -410,8 +429,8 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
       "typeVersion": 1.1,
       "position": [
-        -1408,
-        512
+        1320,
+        500
       ]
     },
     {
@@ -423,7 +442,7 @@
       "type": "@n8n/n8n-nodes-langchain.embeddingsAwsBedrock",
       "typeVersion": 1,
       "position": [
-        -1328,
+        1040,
         720
       ]
     },
@@ -435,21 +454,21 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        256,
-        928
+        -680,
+        1500
       ],
       "id": "310fd87d-da8c-4e2f-a612-11e6b744d974",
       "name": "Bedrock: Embed Chunk (SigV4)"
     },
     {
       "parameters": {
-        "jsCode": "// === Capture the diff as a run record before any inserts/deletes happen ===\nconst crypto = require('crypto');\nconst https = require('https');\n\n// --- Inputs ---\nconst cfg = $('Set Config').first().json;\nconst diff = $json;\n\nconst qdrantApiKey = cfg.qdrantApiKey || '';\nconst chunksColl = cfg.qdrantCollection;\nconst runsColl = cfg.qdrantRunsCollection || 'regulatory_docs_runs';\n\n// Parse Qdrant URL manually (URL global is not exposed in n8n's Code sandbox)\nconst m = String(cfg.qdrantUrl).match(/^(https?):\\/\\/([^:/]+)(?::(\\d+))?/);\nif (!m) throw new Error('Invalid qdrantUrl in Set Config: ' + cfg.qdrantUrl);\nconst qProtocol = m[1];\nconst qHostname = m[2];\nconst qPort = m[3] ? parseInt(m[3], 10) : (qProtocol === 'https' ? 443 : 80);\nconst transport = qProtocol === 'https' ? https : require('http');\n\n// --- Promise-resolving Qdrant call (same pattern as the Bedrock node) ---\nfunction qdrantCall(method, path, body) {\n  const payload = body ? JSON.stringify(body) : '';\n  return new Promise((resolve) => {\n    const req = transport.request(\n      {\n        hostname: qHostname,\n        port: qPort,\n        path,\n        method,\n        headers: {\n          'Content-Type': 'application/json',\n          'api-key': qdrantApiKey,\n          'Content-Length': Buffer.byteLength(payload),\n        },\n      },\n      (res) => {\n        const chunks = [];\n        res.on('data', (c) => chunks.push(c));\n        res.on('end', () => {\n          resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') });\n        });\n      },\n    );\n    req.on('error', (e) => resolve({ status: 0, body: 'NETWORK: ' + e.message }));\n    if (payload) req.write(payload);\n    req.end();\n  });\n}\n\nfunction deterministicUuid(input) {\n  const h = crypto.createHash('sha1').update(input).digest();\n  h[6] = (h[6] & 0x0f) | 0x50;\n  h[8] = (h[8] & 0x3f) | 0x80;\n  const hex = h.toString('hex');\n  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join('-');\n}\n\n// --- 1. Fetch text of chunks that are about to be deleted ---\nlet removed = [];\nif (Array.isArray(diff.toDeleteIds) && diff.toDeleteIds.length > 0) {\n  const r = await qdrantCall('POST', `/collections/${chunksColl}/points`, {\n    ids: diff.toDeleteIds,\n    with_payload: true,\n    with_vector: false,\n  });\n  if (r.status < 200 || r.status >= 300) {\n    throw new Error('Qdrant fetch-stale failed ' + r.status + ': ' + r.body.slice(0, 400));\n  }\n  const parsed = JSON.parse(r.body);\n  removed = (parsed.result || []).map((p) => ({\n    pointId: p.id,\n    chunkIndex: p.payload && p.payload.metadata && p.payload.metadata.chunkIndex,\n    chunkHash: p.payload && p.payload.metadata && p.payload.metadata.chunkHash,\n    previousVersionId: p.payload && p.payload.metadata && p.payload.metadata.versionId,\n    chunkText: p.payload && p.payload.content,\n  }));\n}\n\n// --- 2. Build the run record (deterministic Qdrant point id for upserts) ---\nconst runPointId = deterministicUuid(`run::${diff.documentUrl}::${diff.versionId}`);\n\nconst runRecord = {\n  runId: diff.versionId + '_' + crypto.randomBytes(3).toString('hex'),\n  timestamp: diff.versionId,\n  versionId: diff.versionId,\n  documentUrl: diff.documentUrl,\n  documentHash: diff.documentHash,\n  fullText: $('Chunk + Hash').first().json.fullText,\n  summary: diff.summary,\n  added: (diff.toInsert || []).map((c) => ({\n    pointId: c.pointId,\n    chunkIndex: c.chunkIndex,\n    chunkHash: c.chunkHash,\n    chunkText: c.chunkText,\n  })),\n  removed,\n};\n\n// --- 3. Write the run record to the runs collection ---\nconst w = await qdrantCall('PUT', `/collections/${runsColl}/points?wait=true`, {\n  points: [{ id: runPointId, vector: [0.0], payload: runRecord }],\n});\nif (w.status < 200 || w.status >= 300) {\n  throw new Error('Qdrant write-run failed ' + w.status + ': ' + w.body.slice(0, 400));\n}\n\n// --- 4. Pass through the original diff so downstream branches keep working ---\nreturn { json: { ...diff, runRecord, runPointId } };\n"
+        "jsCode": "// === Capture the diff as a run record before any inserts/deletes happen ===\nconst crypto = require('crypto');\nconst https = require('https');\n\n// --- Inputs ---\nconst cfg = $('Set Config').first().json;\nconst diff = $json;\n\nconst qdrantApiKey = cfg.qdrantApiKey || '';\nconst chunksColl = cfg.qdrantCollection;\nconst runsColl = cfg.qdrantRunsCollection || 'regulatory_docs_runs';\n\n// Parse Qdrant URL manually (URL global is not exposed in n8n's Code sandbox)\nconst m = String(cfg.qdrantUrl).match(/^(https?):\\/\\/([^:/]+)(?::(\\d+))?/);\nif (!m) throw new Error('Invalid qdrantUrl in Set Config: ' + cfg.qdrantUrl);\nconst qProtocol = m[1];\nconst qHostname = m[2];\nconst qPort = m[3] ? parseInt(m[3], 10) : (qProtocol === 'https' ? 443 : 80);\nconst transport = qProtocol === 'https' ? https : require('http');\n\n// --- Promise-resolving Qdrant call (same pattern as the Bedrock node) ---\nfunction qdrantCall(method, path, body) {\n  const payload = body ? JSON.stringify(body) : '';\n  return new Promise((resolve) => {\n    const req = transport.request(\n      {\n        hostname: qHostname,\n        port: qPort,\n        path,\n        method,\n        headers: {\n          'Content-Type': 'application/json',\n          'api-key': qdrantApiKey,\n          'Content-Length': Buffer.byteLength(payload),\n        },\n      },\n      (res) => {\n        const chunks = [];\n        res.on('data', (c) => chunks.push(c));\n        res.on('end', () => {\n          resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') });\n        });\n      },\n    );\n    req.on('error', (e) => resolve({ status: 0, body: 'NETWORK: ' + e.message }));\n    if (payload) req.write(payload);\n    req.end();\n  });\n}\n\nfunction deterministicUuid(input) {\n  const h = crypto.createHash('sha1').update(input).digest();\n  h[6] = (h[6] & 0x0f) | 0x50;\n  h[8] = (h[8] & 0x3f) | 0x80;\n  const hex = h.toString('hex');\n  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join('-');\n}\n\n// --- 1. Fetch text of chunks that are about to be deleted ---\nlet removed = [];\nif (Array.isArray(diff.toDeleteIds) && diff.toDeleteIds.length > 0) {\n  const r = await qdrantCall('POST', `/collections/${chunksColl}/points`, {\n    ids: diff.toDeleteIds,\n    with_payload: true,\n    with_vector: false,\n  });\n  if (r.status < 200 || r.status >= 300) {\n    throw new Error('Qdrant fetch-stale failed ' + r.status + ': ' + r.body.slice(0, 400));\n  }\n  const parsed = JSON.parse(r.body);\n  removed = (parsed.result || []).map((p) => ({\n    pointId: p.id,\n    chunkIndex: p.payload && p.payload.metadata && p.payload.metadata.chunkIndex,\n    chunkHash: p.payload && p.payload.metadata && p.payload.metadata.chunkHash,\n    previousVersionId: p.payload && p.payload.metadata && p.payload.metadata.versionId,\n    chunkText: p.payload && p.payload.content,\n  }));\n}\n\n// --- 2. Build the run record (deterministic Qdrant point id for upserts) ---\nconst runPointId = deterministicUuid(`run::${diff.documentUrl}::${diff.versionId}`);\n\nconst runRecord = {\n  runId: diff.versionId + '_' + crypto.randomBytes(3).toString('hex'),\n  timestamp: diff.versionId,\n  versionId: diff.versionId,\n  documentUrl: diff.documentUrl,\n  documentHash: diff.documentHash,\n  fullText: $('Chunk + Hash').first().json.fullText,\n  ...(diff.pdfPageCount != null && diff.pdfPageCount !== ''\n    ? { pdfPageCount: Number(diff.pdfPageCount) }\n    : {}),\n  ...(diff.pdfPageCountSource ? { pdfPageCountSource: String(diff.pdfPageCountSource) } : {}),\n  ...(diff.sourceIngest && typeof diff.sourceIngest === 'object'\n    ? { sourceIngest: diff.sourceIngest }\n    : {}),\n  summary: diff.summary,\n  added: (diff.toInsert || []).map((c) => ({\n    pointId: c.pointId,\n    chunkIndex: c.chunkIndex,\n    chunkHash: c.chunkHash,\n    chunkText: c.chunkText,\n  })),\n  removed,\n};\n\nconst existingRes = await qdrantCall('POST', `/collections/${runsColl}/points`, {\n  ids: [runPointId],\n  with_payload: true,\n  with_vector: false,\n});\nif (existingRes.status >= 200 && existingRes.status < 300) {\n  try {\n    const parsed = JSON.parse(existingRes.body);\n    const arr = Array.isArray(parsed.result) ? parsed.result : (parsed.result && parsed.result.points) || [];\n    const ep = (arr[0] && arr[0].payload) || {};\n    if (ep.hitlReview && typeof ep.hitlReview === 'object') {\n      runRecord.hitlReview = ep.hitlReview;\n    }\n  } catch (e) {\n    /* ignore */\n  }\n}\n\n// --- 3. Write the run record to the runs collection ---\nconst w = await qdrantCall('PUT', `/collections/${runsColl}/points?wait=true`, {\n  points: [{ id: runPointId, vector: [0.0], payload: runRecord }],\n});\nif (w.status < 200 || w.status >= 300) {\n  throw new Error('Qdrant write-run failed ' + w.status + ': ' + w.body.slice(0, 400));\n}\n\n// --- 4. Pass through the original diff so downstream branches keep working ---\nreturn { json: { ...diff, runRecord, runPointId } };\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -192,
-        1024
+        -400,
+        1000
       ],
       "id": "630cd877-81d3-4dbd-8922-5186589ed9c5",
       "name": "Build & Write Run Record"
@@ -474,8 +493,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        80,
-        1024
+        -120,
+        1000
       ]
     },
     {
@@ -488,8 +507,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        300,
-        1024
+        160,
+        1000
       ]
     },
     {
@@ -502,8 +521,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1520,
-        496
+        -2360,
+        280
       ]
     },
     {
@@ -526,8 +545,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -1280,
-        496
+        -2080,
+        280
       ]
     },
     {
@@ -541,8 +560,8 @@
       "type": "@n8n/n8n-nodes-langchain.chat",
       "typeVersion": 1.2,
       "position": [
-        -1040,
-        496
+        -1800,
+        280
       ]
     },
     {
@@ -557,8 +576,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -1760,
-        800
+        -2640,
+        520
       ],
       "webhookId": "c0ffee00-1111-2222-3333-444455556666"
     },
@@ -576,8 +595,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -1520,
-        800
+        -2360,
+        520
       ]
     },
     {
@@ -591,8 +610,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -1280,
-        800
+        -2080,
+        520
       ]
     },
     {
@@ -607,8 +626,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -1760,
-        1000
+        -2640,
+        740
       ],
       "webhookId": "d0ffee00-aaaa-bbbb-cccc-dddddddddddd"
     },
@@ -626,8 +645,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -1520,
-        1000
+        -2360,
+        740
       ]
     },
     {
@@ -641,8 +660,22 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -1040,
-        940
+        -2080,
+        740
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Normalize HTTP download metadata for downstream nodes (XC-004 starter) ===\n// Expects Download PDF with options.response.response.fullResponse = true and responseFormat = file.\n// n8n 2.19+: in \"Run Once for Each Item\" mode use $input.item (not $input.first()).\nconst item = $input.item;\nconst j = item.json || {};\nconst status =\n  typeof j.statusCode === 'number'\n    ? j.statusCode\n    : typeof j.status === 'number'\n      ? j.status\n      : 200;\nconst headersRaw = j.headers || {};\nconst headers = {};\nfor (const [k, v] of Object.entries(headersRaw)) {\n  const key = String(k).toLowerCase();\n  headers[key] = Array.isArray(v) ? v[0] : v;\n}\nconst h = (name) => {\n  const v = headers[name];\n  return v == null ? null : String(v);\n};\nconst bin = item.binary && item.binary.data;\nlet bytes = null;\nif (bin && typeof bin.fileSize === 'number') bytes = bin.fileSize;\n\nconst fetchedAt = new Date().toISOString();\n\nreturn {\n  json: {\n    ingestHttpStatus: status,\n    ingestFetchedAt: fetchedAt,\n    ingestContentLength: h('content-length'),\n    ingestEtag: h('etag'),\n    ingestLastModified: h('last-modified'),\n    ingestBytes: bytes,\n    ingestError: status >= 400 ? 'HTTP ' + status : null,\n  },\n  binary: item.binary,\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ingestprov01",
+      "name": "Code: Ingest Provenance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1800,
+        1000
       ]
     }
   ],
@@ -673,7 +706,7 @@
       "main": [
         [
           {
-            "node": "Extract PDF Text",
+            "node": "Code: Ingest Provenance",
             "type": "main",
             "index": 0
           }
@@ -886,6 +919,17 @@
         [
           {
             "node": "Respond: Orchestrate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Ingest Provenance": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
             "type": "main",
             "index": 0
           }

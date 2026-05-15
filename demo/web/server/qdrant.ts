@@ -41,3 +41,13 @@ export function extractScrollPoints(res: unknown): { id: unknown; payload: Recor
     payload: (p.payload ?? {}) as Record<string, unknown>,
   }));
 }
+
+/** POST /collections/{name}/points with `ids` — first point or null. */
+export function extractRetrieveFirst(res: unknown): { id: unknown; payload: Record<string, unknown> } | null {
+  const r = res as { result?: unknown };
+  const raw = r.result;
+  const list = Array.isArray(raw) ? raw : (raw as { points?: unknown[] } | undefined)?.points;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const p = list[0] as { id?: unknown; payload?: Record<string, unknown> };
+  return { id: p.id, payload: (p.payload ?? {}) as Record<string, unknown> };
+}

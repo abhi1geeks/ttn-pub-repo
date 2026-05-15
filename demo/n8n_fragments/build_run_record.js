@@ -90,6 +90,10 @@ const runRecord = {
   ...(diff.pdfPageCount != null && diff.pdfPageCount !== ''
     ? { pdfPageCount: Number(diff.pdfPageCount) }
     : {}),
+  ...(diff.pdfPageCountSource ? { pdfPageCountSource: String(diff.pdfPageCountSource) } : {}),
+  ...(diff.sourceIngest && typeof diff.sourceIngest === 'object'
+    ? { sourceIngest: diff.sourceIngest }
+    : {}),
   summary: diff.summary,
   added: (diff.toInsert || []).map((c) => ({
     pointId: c.pointId,
@@ -99,6 +103,24 @@ const runRecord = {
   })),
   removed,
 };
+
+const existingRes = await qdrantCall('POST', `/collections/${runsColl}/points`, {
+  ids: [runPointId],
+  with_payload: true,
+  with_vector: false,
+});
+if (existingRes.status >= 200 && existingRes.status < 300) {
+  try {
+    const parsed = JSON.parse(existingRes.body);
+    const arr = Array.isArray(parsed.result) ? parsed.result : (parsed.result && parsed.result.points) || [];
+    const ep = (arr[0] && arr[0].payload) || {};
+    if (ep.hitlReview && typeof ep.hitlReview === 'object') {
+      runRecord.hitlReview = ep.hitlReview;
+    }
+  } catch (e) {
+    /* ignore */
+  }
+}
 
 // --- 3. Write the run record to the runs collection ---
 const w = await qdrantCall('PUT', `/collections/${runsColl}/points?wait=true`, {

@@ -1,0 +1,26 @@
+# Ships container stdout/stderr to local Loki only (see clients.url).
+# Uses json-file log paths (no Docker API — avoids client/daemon version mismatches).
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker_json_file
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          __path__: /var/lib/docker/containers/*/*-json.log
+    pipeline_stages:
+      - docker: {}
+    relabel_configs:
+      - source_labels: [__path__]
+        regex: '/var/lib/docker/containers/([a-f0-9]{12})[a-f0-9]*/[a-f0-9]+-json\.log'
+        target_label: container_id

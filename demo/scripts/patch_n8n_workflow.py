@@ -17,10 +17,31 @@ def main() -> None:
 
     build_js = (FRAG / "build_run_record.js").read_text()
     merge_js = (FRAG / "merge_llm_into_run.js").read_text()
+    chunk_js = (FRAG / "chunk_and_hash.js").read_text()
+    compute_js = (FRAG / "compute_diff.js").read_text()
+    build_point_js = (FRAG / "build_qdrant_point.js").read_text()
+    provenance_js = (FRAG / "ingest_provenance.js").read_text()
 
     for n in nodes:
         if n.get("name") == "Build & Write Run Record":
             n["parameters"]["jsCode"] = build_js
+        if n.get("name") == "Chunk + Hash":
+            n["parameters"]["jsCode"] = chunk_js
+        if n.get("name") == "Compute Diff":
+            n["parameters"]["jsCode"] = compute_js
+        if n.get("name") == "Build Qdrant Point":
+            n["parameters"]["jsCode"] = build_point_js
+        if n.get("name") == "Code: Ingest Provenance":
+            n["parameters"]["jsCode"] = provenance_js
+        if n.get("name") == "Download PDF":
+            inner = (
+                n.setdefault("parameters", {})
+                .setdefault("options", {})
+                .setdefault("response", {})
+                .setdefault("response", {})
+            )
+            inner["responseFormat"] = "file"
+            inner["fullResponse"] = True
         if n.get("name") == "Set Config":
             assigns = n["parameters"]["assignments"]["assignments"]
             names = {a["name"]: a for a in assigns}
@@ -32,6 +53,9 @@ def main() -> None:
                 {"id": "n-qk", "name": "qdrantApiKey", "value": "", "type": "string"},
                 {"id": "n-ag", "name": "agentsApiUrl", "value": "http://agents:8000", "type": "string"},
                 {"id": "n-st", "name": "awsSessionToken", "value": "", "type": "string"},
+                {"id": "n-pl", "name": "productLine", "value": "default", "type": "string"},
+                {"id": "n-jd", "name": "jurisdiction", "value": "", "type": "string"},
+                {"id": "n-ed", "name": "effectiveDate", "value": "", "type": "string"},
             ]
             existing = {a["name"] for a in assigns}
             for e in extra:
@@ -88,6 +112,16 @@ def main() -> None:
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [300, 1024],
+        }
+    )
+    add_node(
+        {
+            "parameters": {"jsCode": provenance_js, "mode": "runOnceForEachItem"},
+            "id": "a1b2c3d4-e5f6-7890-abcd-ingestprov01",
+            "name": "Code: Ingest Provenance",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [-1184, 1024],
         }
     )
     doc_url = "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/regulation-14-as-of-02-26.pdf"
@@ -317,12 +351,80 @@ return {{
             ]
         ]
     }
+    con["Download PDF"] = {
+        "main": [
+            [
+                {"node": "Code: Ingest Provenance", "type": "main", "index": 0},
+            ]
+        ]
+    }
+    con["Code: Ingest Provenance"] = {
+        "main": [
+            [
+                {"node": "Extract PDF Text", "type": "main", "index": 0},
+            ]
+        ]
+    }
 
     for name in ("Bedrock Chat Model", "Qdrant Vector Store (Tool)", "Bedrock Embeddings (Retrieval)"):
         if name in con:
             ent = con[name]
             for k in list(ent.keys()):
                 ent[k] = []
+
+    # --- Canvas layout: separate lanes so nodes do not overlap in n8n UI (connections unchanged) ---
+    x0 = -2640
+    gap_x, gap_y = 280, 220
+    y_notes, y_chat, y_web1, y_web2, y_ingest = -80, 280, 520, 740, 1000
+    y_embed_branch, y_embed_chain = 1280, 1500
+
+    canvas_positions: dict[str, list[int]] = {
+        "README": [x0, y_notes],
+        "Section: RAG": [x0, y_notes + 160],
+        "Section: Ingestion": [x0, y_ingest - 100],
+        # Hosted chat
+        "Chat Trigger": [x0, y_chat],
+        "Code: Chat Scope": [x0 + gap_x, y_chat],
+        "HTTP: ChatPipeline": [x0 + 2 * gap_x, y_chat],
+        "Chat: Send Reply": [x0 + 3 * gap_x, y_chat],
+        # Webhooks + agents HTTP
+        "Webhook: Compare": [x0, y_web1],
+        "HTTP: CompareAgent": [x0 + gap_x, y_web1],
+        "Respond: Compare": [x0 + 2 * gap_x, y_web1],
+        "Webhook: Orchestrate": [x0, y_web2],
+        "HTTP: Orchestrate": [x0 + gap_x, y_web2],
+        "Respond: Orchestrate": [x0 + 2 * gap_x, y_web2],
+        # Scheduled PDF ingest (left → right)
+        "Schedule Trigger": [x0, y_ingest],
+        "Set Config": [x0 + gap_x, y_ingest],
+        "Download PDF": [x0 + 2 * gap_x, y_ingest],
+        "Code: Ingest Provenance": [x0 + 3 * gap_x, y_ingest],
+        "Extract PDF Text": [x0 + 4 * gap_x, y_ingest],
+        "Chunk + Hash": [x0 + 5 * gap_x, y_ingest],
+        "Qdrant: Scroll Existing IDs": [x0 + 6 * gap_x, y_ingest],
+        "Compute Diff": [x0 + 7 * gap_x, y_ingest],
+        "Build & Write Run Record": [x0 + 8 * gap_x, y_ingest],
+        "HTTP: SummaryAgent": [x0 + 9 * gap_x, y_ingest],
+        "Code: Merge LLM Into Run": [x0 + 10 * gap_x, y_ingest],
+        # Parallel branches from merge
+        "Split: New Chunks": [x0 + 7 * gap_x, y_embed_branch],
+        "If: Any Stale Chunks?": [x0 + 10 * gap_x, y_embed_branch],
+        # Embed chain
+        "Bedrock: Embed Chunk (SigV4)": [x0 + 7 * gap_x, y_embed_chain],
+        "Build Qdrant Point": [x0 + 8 * gap_x, y_embed_chain],
+        "Qdrant: Upsert Point": [x0 + 9 * gap_x, y_embed_chain],
+        # Stale delete under If branch
+        "Qdrant: Delete Stale Points": [x0 + 10 * gap_x, y_embed_chain],
+        # Disconnected LangChain reference (kept for docs; no main connections)
+        "AI Agent": [1040, y_chat],
+        "Bedrock Chat Model": [1040, y_chat + gap_y],
+        "Qdrant Vector Store (Tool)": [1320, y_chat + gap_y],
+        "Bedrock Embeddings (Retrieval)": [1040, y_chat + 2 * gap_y],
+    }
+    for n in nodes:
+        nm = n.get("name")
+        if nm in canvas_positions:
+            n["position"] = canvas_positions[nm][:]
 
     WF.write_text(json.dumps(wf, indent=2))
     print("patched", WF)

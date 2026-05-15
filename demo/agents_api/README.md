@@ -19,12 +19,15 @@ Optional body field **`force_qna`** (default `false`): when `true`, skips the co
 
 **Agentic workflow** (`POST /v1/workflow/agentic`): if the supervisor picks **compare** or **summary** but `compare_context` / `summary_context` is missing and **`document_url`** is set, the service **falls back to QnA** (retrieve → answer) and sets **`fallback_from`** to `compare` or `summary` while keeping **`supervisor_route`** as the original branch. If the supervisor returns **`blocked`** but **`document_url`** is set (and the message is not empty), the workflow **still runs QnA** with **`fallback_from`:** `blocked` (LLM “ambiguous” blocks are overridden in `classify_intent` by keyword rules when possible).
 
+When **`compare_context`** includes baseline + current full text, questions that clearly ask for a **side-by-side / page-wise / redline** style view still run **CompareAgent** even if **`force_qna`** is `true` (Agents tab default), so chat does not pretend a chunk-only answer is a full diff.
+
 ## Environment
 
 | Variable | Default | Notes |
 |----------|---------|--------|
 | `AGENTS_STUB_LLM` | `1` | When `1`, Bedrock is skipped and stub text is returned. |
 | `SUPERVISOR_USE_LLM` | `auto` | Intent from user query: `auto` uses Bedrock JSON routing when `AGENTS_STUB_LLM=0`, else keyword rules. `llm` / `1` always tries LLM first (falls back to rules if JSON invalid). `rules` / `0` forces keyword rules only. |
+| `WORKFLOW_ENGINE` | `langgraph` | Orchestration engine for `POST /v1/workflow/agentic`. `langgraph` runs the LangGraph state graph (`app.agents.workflow_graph`); `legacy` runs the original hand-rolled async dispatcher. Both engines return the same `AgenticWorkflowResponse` (including `debug_trace`). |
 | `AWS_REGION` | `us-east-1` | For boto3 Bedrock |
 | `BEDROCK_CHAT_MODEL_ID` | `amazon.nova-pro-v1:0` | Override model id (Nova uses Converse API; `anthropic.*` uses Messages `invoke_model`) |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | (unset) | Optional explicit keys for local/Docker; same as standard boto3 credential chain. |

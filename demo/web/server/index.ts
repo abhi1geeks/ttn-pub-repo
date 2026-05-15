@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { buildSideBySideRows, buildUnifiedDiffLines } from "../src/lib/diff";
-import { extractScrollPoints, qdrantPost } from "./qdrant";
+import { registerAuthApiGate, registerAuthRoutes, isAuthEnabled } from "./auth";
+import { extractRetrieveFirst, extractScrollPoints, qdrantPost } from "./qdrant";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,6 +59,9 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
+registerAuthRoutes(app);
+registerAuthApiGate(app);
+
 if (AGENTS_URL) {
   app.use("/api/agents", async (req, res) => {
     const pathAndQuery = req.originalUrl.replace(/^\/api\/agents/, "") || "/";
@@ -89,6 +93,7 @@ app.get("/api/health", (_req, res) => {
     runsCollection: RUNS_COLLECTION,
     chunksCollection: CHUNKS_COLLECTION,
     agentsProxy: Boolean(AGENTS_URL),
+    authRequired: isAuthEnabled(),
   });
 });
 
@@ -108,6 +113,62 @@ app.get("/api/runs", async (_req, res) => {
     }) as Record<string, unknown>[];
     runs.sort((a, b) => String(b.timestamp ?? "").localeCompare(String(a.timestamp ?? "")));
     res.json({ runs });
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+const HITL_REASON_MAX = 2000;
+
+app.post("/api/runs/review", async (req, res) => {
+  const runPointId = String(req.body?.runPointId ?? "").trim();
+  const status = String(req.body?.status ?? "").trim() as "none" | "acknowledged" | "flagged";
+  const reasonRaw = typeof req.body?.reason === "string" ? req.body.reason : "";
+  const reason = reasonRaw.replace(/\r\n/g, "\n").trim().slice(0, HITL_REASON_MAX);
+
+  if (!runPointId || runPointId.length > 200) {
+    res.status(400).json({ error: "Missing or invalid runPointId." });
+    return;
+  }
+  if (status !== "none" && status !== "acknowledged" && status !== "flagged") {
+    res.status(400).json({ error: "status must be none, acknowledged, or flagged." });
+    return;
+  }
+
+  try {
+    const retrieved = await qdrantPost(QDRANT_URL, QDRANT_API_KEY || undefined, `/collections/${RUNS_COLLECTION}/points`, {
+      ids: [runPointId],
+      with_payload: true,
+      with_vector: false,
+    });
+    const first = extractRetrieveFirst(retrieved);
+    if (!first) {
+      res.status(404).json({ error: "Run point not found in Qdrant." });
+      return;
+    }
+
+    if (status === "none") {
+      await qdrantPost(QDRANT_URL, QDRANT_API_KEY || undefined, `/collections/${RUNS_COLLECTION}/points/delete_payload`, {
+        points: [runPointId],
+        keys: ["hitlReview"],
+      });
+      res.json({ ok: true, hitlReview: null });
+      return;
+    }
+
+    const hitlReview = {
+      status,
+      ...(reason ? { reason } : {}),
+      reviewedAt: new Date().toISOString(),
+      source: "regulatory-web",
+    };
+
+    await qdrantPost(QDRANT_URL, QDRANT_API_KEY || undefined, `/collections/${RUNS_COLLECTION}/points/payload`, {
+      payload: { hitlReview },
+      points: [runPointId],
+    });
+
+    res.json({ ok: true, hitlReview });
   } catch (e) {
     res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
   }
@@ -181,6 +242,18 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 server.listen(preferredPort, "0.0.0.0", () => {
   // eslint-disable-next-line no-console
   console.log(`[regulatory-web] API listening on http://127.0.0.1:${preferredPort}`);
+  if (isAuthEnabled()) {
+    // eslint-disable-next-line no-console
+    console.log("[regulatory-web] UI login is enabled (signed session cookie).");
+  } else if (process.env.WEB_LOGIN_USER?.trim() && (process.env.WEB_LOGIN_PASSWORD?.length ?? 0) > 0) {
+    const slen = process.env.WEB_SESSION_SECRET?.trim().length ?? 0;
+    if (slen < 16) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[regulatory-web] WEB_LOGIN_USER/PASSWORD are set but WEB_SESSION_SECRET must be at least 16 characters. UI login stays disabled.",
+      );
+    }
+  }
   if (process.env.NODE_ENV === "production") {
     // eslint-disable-next-line no-console
     console.log(`[regulatory-web] Serving static from ${dist}`);

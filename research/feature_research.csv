@@ -1,0 +1,48 @@
+category,feature_name,description
+Pricing & packaging,Reggi (Free tier),Individual GenAI assistant for US laws and regulations
+Pricing & packaging,Professional tier,US-only change management with full Smart Law Library
+Pricing & packaging,Enterprise tier,Global program: multi-jurisdiction; bills; GRC; compliance management; custom API; 24/7 support
+Pricing & packaging,Pricing watch-outs (cross-cutting),Third-party review themes affecting total cost of ownership
+Architecture,End-to-end platform pipeline (reconstructed),High-level flow from sources through agents to GRC and API
+Architecture,AI / NLP stack,NLP/ML reads law like a lawyer (structure; definitions; shall/must; penalties; exemptions; cross-refs); GenAI (Reggi) wraps layer for summarization; drafting; Q&A with RAG citations
+Architecture,Smart Law Library™ (data layer),Proprietary per-customer filtered corpus over global content
+Architecture,Integration layer,Outbound formats and GRC connectors for systems of record
+Architecture,Security; privacy; AI governance,SOC 2 Type II
+Architecture,Architectural lessons for GLI (summary),Five design principles abstracted from Regology for internal build
+Smart Law Library™,Pre-curated or imported legal register,Foundational library: choose curated packs or upload customer legal register
+Smart Law Library™,Organization by topic / department / product line,Multi-dimensional tagging as part of customer legal DNA
+Smart Law Library™,Paragraph-level breakdown and citations,Stable citation IDs per clause for downstream alerts and drafts
+Smart Law Library™,GenAI summaries over laws,Auto-summarize or extract requirements from corpus
+Regulatory Change Agent,Applicable alerts,Only changes matching customer legal DNA surface as alerts
+Regulatory Change Agent,Redlined diffs,Human-readable insert/delete/modify at clause/paragraph level
+Regulatory Change Agent,Impact analysis,Who is affected
+Regulatory Change Agent,Horizon scanning / bill tracking,Track proposed bills through legislative milestones
+Regulatory Change Agent,Enforcement actions tracking,Monitor agency enforcement
+Regulatory Change Agent,GenAI research on amendments,Deep-dive from alert context via Reggi
+Compliance Agent,Regulatory mapping,Link risks/policies/controls to driving legislation
+Compliance Agent,Drafting with GenAI,Draft obligations
+Compliance Agent,GRC integrations,Push/sync approved objects to vendor GRC systems
+Compliance Agent,Task management,Tasks tied to change or compliance object
+Compliance Agent,Controls testing,Test effectiveness of controls with evidence
+Compliance Agent,Policy gap analysis,Compare internal policy to regulation
+Compliance Agent,Harmonized requirements,Cluster equivalent requirements across jurisdictions
+Reggi (Research Agent),Summarize / applicability / penalties / exemptions skills,Out-of-the-box extraction and summarization skills on library documents
+Reggi (Research Agent),Draft Requirements; Draft Controls; Draft Policies skills,Structured compliance drafts from selected sources
+Reggi (Research Agent),Bill research skill,Research bills by jurisdiction/year/status
+Reggi (Research Agent),Relevance of regulatory change alert skill,Embedded scoring in alert review to triage reviewers
+Reggi (Research Agent),Six agentic workflows (bundle),Single-doc research
+AI-powered regulatory search,Cross-corpus Q&A and filters,GenAI Q&A across large doc universe
+Dashboards & reporting,Operational and executive dashboards,50+ pre-built
+Onboarding,Four-step rollout model,Standard customer journey from library setup through expansion
+Integrations & platform,GRC vendor connectors (named),First-class integrations to major GRC platforms
+Integrations & platform,Custom API integrations,REST/JSON; XML; CSV; SFTP for DIY and enterprise connectivity
+Integrations & platform,Group workflows,Enterprise collaboration on review and tasks
+Reference — flows only (no separate price),Regulatory Change Agent — full E2E flow (summary row),Canonical 10-step flagship pipeline from crawl to audit
+Reference — flows only (no separate price),Bill tracking & horizon scanning — E2E flow,Legislative lifecycle from ingestion to pre-mapped impact
+Reference — flows only (no separate price),Reggi Q&A — E2E flow,Cited natural-language answers
+Reference — flows only (no separate price),Reggi draft requirements/controls/policies — E2E flow,From clause selection to GRC object sync
+Reference — flows only (no separate price),Policy gap analysis — E2E flow,Internal policy vs regulation classification
+Reference — flows only (no separate price),Multi-jurisdictional research — E2E flow,Compare answers across selected jurisdictions with citations
+Suggested GLI extras (from same report),Clause-level structural diff (suggested),Readable redlines vs vector-only noise
+Suggested GLI extras (from same report),LLM alert-relevance scoring (suggested),Triage before reviewer inbox
+Suggested GLI extras (from same report),Auto-drafted GLIAccess update package (suggested),Structured package not raw diff push

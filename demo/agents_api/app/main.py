@@ -6,15 +6,20 @@ import logging
 import os
 import uuid
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.agents.agentic_workflow import run_agentic_workflow
 from app.agents.compare import run_compare_agent
-from app.agents.guardrails import validate_guardrails
+from app.agents.guardrails import (
+    first_compare_agent_request_policy_violation,
+    first_summary_input_policy_violation,
+    validate_guardrails,
+)
 from app.agents.qna import run_qna_agent
 from app.agents.summary import run_summary_agent
 from app.agents.supervisor import classify_intent_async
+from app.pipelines.chat_triage import trivial_chat_reply
 from app.pipelines.retrieve_qna import retrieve_and_answer
 from app.schemas import (
     AgenticWorkflowRequest,
@@ -62,21 +67,37 @@ async def guardrails_validate(body: GuardrailsValidateRequest) -> GuardrailsVali
 
 @app.post("/v1/orchestrate", response_model=OrchestrateResponse)
 async def orchestrate_route(body: OrchestrateRequest) -> OrchestrateResponse:
+    g_in = validate_guardrails(
+        GuardrailsValidateRequest(phase="input", text=body.user_message, require_chunk_citations=False)
+    )
+    if not g_in.allowed:
+        return OrchestrateResponse(route="blocked", reason=g_in.reason)
     return await classify_intent_async(body)
 
 
 @app.post("/v1/agents/summary", response_model=SummaryAgentResponse)
 async def summary_route(body: SummaryAgentRequest) -> SummaryAgentResponse:
+    v = first_summary_input_policy_violation(body)
+    if v is not None:
+        raise HTTPException(status_code=400, detail={"error": "input_policy", "reason": v})
     return await run_summary_agent(body)
 
 
 @app.post("/v1/agents/qna", response_model=QnAAgentResponse)
 async def qna_route(body: QnAAgentRequest) -> QnAAgentResponse:
+    g_in = validate_guardrails(
+        GuardrailsValidateRequest(phase="input", text=body.question, require_chunk_citations=False)
+    )
+    if not g_in.allowed:
+        raise HTTPException(status_code=400, detail={"error": "input_policy", "reason": g_in.reason})
     return await run_qna_agent(body)
 
 
 @app.post("/v1/agents/compare", response_model=CompareAgentResponse)
 async def compare_route(body: CompareAgentRequest) -> CompareAgentResponse:
+    v = first_compare_agent_request_policy_violation(body)
+    if v is not None:
+        raise HTTPException(status_code=400, detail={"error": "input_policy", "reason": v})
     return await run_compare_agent(body)
 
 
@@ -101,6 +122,10 @@ async def chat_pipeline(
             blocked=True,
             reason=g0.reason,
         )
+
+    canned = trivial_chat_reply(body.message)
+    if canned is not None:
+        return ChatPipelineResponse(reply=canned, route="conversational", blocked=False)
 
     orch = await classify_intent_async(
         OrchestrateRequest(user_message=body.message, document_url=body.document_url or None)

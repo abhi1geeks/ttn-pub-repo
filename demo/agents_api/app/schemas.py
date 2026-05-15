@@ -31,6 +31,14 @@ class GuardrailsValidateResponse(BaseModel):
 class OrchestrateRequest(BaseModel):
     user_message: str = Field(..., min_length=1, max_length=16_000)
     document_url: str | None = None
+    full_compare_texts_attached: bool = Field(
+        default=False,
+        description="Caller attached baseline+current full bodies — supervisor should weigh compare vs qna.",
+    )
+    ingest_delta_context_attached: bool = Field(
+        default=False,
+        description="Caller attached ingest / chunk-delta payload for SummaryAgent — prefer summary for delta asks.",
+    )
 
 
 class OrchestrateResponse(BaseModel):
@@ -202,4 +210,9 @@ class AgenticWorkflowResponse(BaseModel):
     debug_trace: dict[str, Any] | None = Field(
         default=None,
         description="Present when request.debug is true: orchestration and branch diagnostics.",
+    )
+    suggested_followups: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Short suggested next user questions for the chat UI, derived from the query and response shape.",
     )

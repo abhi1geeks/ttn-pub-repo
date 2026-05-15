@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import difflib
-import re
 from typing import Any
 
+from app.agents.agent_definitions import compare_system_prompt
 from app.bedrock import converse_text
 from app.schemas import CompareAgentRequest, CompareAgentResponse, CompareChunkDelta
 
@@ -145,19 +145,12 @@ def _page_indexed_change_list(
     return "\n".join(bullets) if bullets else ""
 
 
-_PAGE_LIST_INTENT = re.compile(
-    r"(?i)(full list|complete list|every change|all changes|enumerate|page number|page numbers|"
-    r"which page|per page|each change|list of change|changes with page)"
-)
-
-
 async def run_compare_agent(req: CompareAgentRequest) -> CompareAgentResponse:
     raw_a = req.baseline_text.strip()
     raw_b = req.current_text.strip()
     uq = (req.user_question or "").strip()
-    wants_list = bool(_PAGE_LIST_INTENT.search(uq)) if uq else False
     diff_excerpt = _unified_diff_excerpt(raw_a, raw_b)
-    page_hunks = _page_indexed_change_list(raw_a, raw_b, max_hunks=160 if wants_list else 100)
+    page_hunks = _page_indexed_change_list(raw_a, raw_b, max_hunks=120)
     a = _head_tail_sample(raw_a, req.max_chars)
     b = _head_tail_sample(raw_b, req.max_chars)
     sm = difflib.SequenceMatcher(a=a, b=b)
@@ -172,15 +165,15 @@ async def run_compare_agent(req: CompareAgentRequest) -> CompareAgentResponse:
             "if there is no \\f, everything is **logical page 1**) ===\n"
             f"{page_hunks}\n\n"
         )
-    list_instructions = ""
-    if wants_list:
-        list_instructions = (
-            "\nThe user asked for a **full list** and/or **page numbers**. After your headline and short narrative, "
-            "add a section **### Change list (by logical page)** and reproduce the bullets from section 1b above "
-            "(you may merge adjacent trivial join/split lines on the same page into one bullet). "
-            "If section 1b is empty, explain that no line-level hunks were detected in scope (or only whitespace), "
-            "and point them to the Readable diff UI.\n"
-        )
+    list_instructions = (
+        "\nIf the user's question clearly asks for a **full list**, **every change**, **exhaustive enumeration**, "
+        "or **page-level listing** of edits, add (after the headline and short narrative) a section "
+        "**### Change list (by logical page)** and reproduce the bullets from section 1b above "
+        "(you may merge adjacent trivial join/split lines on the same page into one bullet). "
+        "If section 1b is empty, explain that no line-level hunks were detected in scope (or only whitespace), "
+        "and point them to the Readable diff UI. If they did **not** ask for enumeration, **omit** that section and "
+        "keep the narrative compact.\n"
+    )
     user = (
         f"{lead}"
         f"{page_block}"
@@ -197,14 +190,8 @@ async def run_compare_agent(req: CompareAgentRequest) -> CompareAgentResponse:
         "without legal advice. If section 1 shows +/- lines, you must reflect those edits."
         f"{list_instructions}"
     )
-    system = (
-        "You are a regulatory diff narrator. The unified diff (section 1) is authoritative for whether lines "
-        "changed globally. Section 1b maps hunks to **logical PDF pages** when form-feed page breaks exist in text. "
-        "Never claim there are no substantive changes if section 1 contains -/+ line hunks. "
-        "When section 0 lists ingest-highlighted chunks, treat those as the pipeline's view of where corpus "
-        "chunks changed; reconcile with sections 1b and 1. Head+tail excerpts are supplementary context only."
-    )
-    max_out = 1600 if wants_list else 500
+    system = compare_system_prompt()
+    max_out = 1600 if page_hunks else 550
     text, mid, stub = converse_text(system, user, max_tokens=max_out)
     headline, _, rest = text.partition("\n")
     narrative = (rest or text).strip()
@@ -212,7 +199,7 @@ async def run_compare_agent(req: CompareAgentRequest) -> CompareAgentResponse:
     if req.debug:
         debug_meta = {
             "user_question_chars": len(uq),
-            "wants_page_or_full_list_intent": wants_list,
+            "page_list_section_left_to_model": True,
             "baseline_body_chars": len(raw_a),
             "current_body_chars": len(raw_b),
             "logical_baseline_pages": len(_split_pages(raw_a)),

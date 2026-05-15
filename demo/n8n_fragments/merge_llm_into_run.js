@@ -45,7 +45,25 @@ function qdrantCall(method, path, body) {
   });
 }
 
+const existingRes = await qdrantCall('POST', `/collections/${runsColl}/points`, {
+  ids: [base.runPointId],
+  with_payload: true,
+  with_vector: false,
+});
+let preservedHitl = null;
+if (existingRes.status >= 200 && existingRes.status < 300) {
+  try {
+    const parsed = JSON.parse(existingRes.body);
+    const arr = Array.isArray(parsed.result) ? parsed.result : (parsed.result && parsed.result.points) || [];
+    const ep = (arr[0] && arr[0].payload) || {};
+    if (ep.hitlReview && typeof ep.hitlReview === 'object') preservedHitl = ep.hitlReview;
+  } catch (e) {
+    /* ignore */
+  }
+}
+
 const runRecord = { ...base.runRecord };
+if (preservedHitl) runRecord.hitlReview = preservedHitl;
 runRecord.llmSummary = llm.llm_summary || llm.llmSummary || '';
 runRecord.materialityNotes = llm.materiality_notes || llm.materialityNotes || '';
 runRecord.materialityScore =

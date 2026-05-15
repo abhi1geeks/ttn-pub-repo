@@ -1,0 +1,54 @@
+# Optional overlay: self-hosted logs only — data stays on this machine (Loki volume + Grafana volume).
+# No SaaS keys. Grafana telemetry to vendor disabled via env.
+#
+# Usage (from demo/):
+#   docker-compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# UI: http://localhost:3001  (Grafana; default admin/admin — change on first login)
+# Loki API is not exposed to the host by default (internal network only).
+
+version: "3.8"
+
+services:
+  # Uses the image’s bundled single-node config; all index/chunks live under /tmp/loki → persisted on the volume.
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: regulatory-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/tmp/loki
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: regulatory-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./observability/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: regulatory-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      # Do not send usage/update checks to Grafana Labs
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_INSTALL_PLUGINS: ""
+      # Optional hardening: disable public signups if you expose Grafana beyond localhost
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - loki
+
+volumes:
+  loki_data:
+  grafana_data:

@@ -25,6 +25,33 @@ def test_classify_intent_llm_when_forced(monkeypatch: pytest.MonkeyPatch) -> Non
     assert out.route == "qna"
 
 
+def test_rules_route_compare_when_full_texts_flag_and_cross_version_question(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Attachment signal + cross-version ask → compare without relying on generic 'compare' token."""
+    monkeypatch.setenv("AGENTS_STUB_LLM", "1")
+    out = classify_intent(
+        OrchestrateRequest(
+            user_message="Compared to the official extract, what are the main differences in the modified version?",
+            document_url="http://x",
+            full_compare_texts_attached=True,
+        )
+    )
+    assert out.route == "compare"
+
+
+def test_rules_route_summary_when_ingest_flag_and_summary_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENTS_STUB_LLM", "1")
+    out = classify_intent(
+        OrchestrateRequest(
+            user_message="Executive overview of materiality for this ingest",
+            document_url="http://x",
+            ingest_delta_context_attached=True,
+        )
+    )
+    assert out.route == "summary"
+
+
 def test_classify_intent_async_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENTS_STUB_LLM", "1")
 

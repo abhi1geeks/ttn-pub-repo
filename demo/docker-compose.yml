@@ -68,6 +68,9 @@ services:
     restart: unless-stopped
     ports:
       - "8787:8787"
+    # Merge local `web/.env` (login, dev defaults). `environment` below overrides per key for Docker (Qdrant URL, agents, port).
+    env_file:
+      - ./web/.env
     environment:
       - NODE_ENV=production
       - QDRANT_URL=http://qdrant:6333

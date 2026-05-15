@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from app.agents.agent_definitions import summary_system_prompt
 from app.bedrock import converse_text
 from app.schemas import SummaryAgentRequest, SummaryAgentResponse
 
@@ -48,7 +49,7 @@ async def run_summary_agent(req: SummaryAgentRequest) -> SummaryAgentResponse:
     if added_n == 0 and removed_n == 0:
         return SummaryAgentResponse(
             llm_summary="No embedding delta in this ingest; document text may still match prior hash.",
-            materiality_notes="Chunk set unchanged — review full-text diff in the UC1 web UI if the PDF hash changed.",
+            materiality_notes="Chunk set unchanged — open the **Readable diff** view if the PDF hash changed.",
             model_id="none",
             stub=True,
             materiality_score=1,
@@ -69,18 +70,15 @@ async def run_summary_agent(req: SummaryAgentRequest) -> SummaryAgentResponse:
         "Do not invent citations; speak only from the excerpts and counts.\n\n"
         "After those paragraphs, add one final line exactly in this form (nothing after it): "
         "SCORE: N — where N is a single digit from 1 (cosmetic / likely immaterial) through 5 "
-        "(likely material for GLI-style gaming compliance follow-up)."
+        "(likely material for gaming compliance follow-up)."
     )
-    system = (
-        "You are a regulatory change analyst for gaming compliance (GLI-style context). "
-        "Be precise; if excerpts are insufficient, say what is unknown."
-    )
+    system = summary_system_prompt()
     text, mid, stub = converse_text(system, user, max_tokens=700)
     if stub:
         text = (
             f"[stub-llm] Chunk delta +{added_n} added / {removed_n} removed vs prior snapshot; "
             "set AGENTS_STUB_LLM=0 and AWS credentials for a Bedrock narrative.\n\n"
-            "POC placeholder: validate any operational takeaway in the diff tab and source PDF.\n\n"
+            "Validate any operational takeaway against the **Readable diff** view and the source PDF.\n\n"
             "SCORE: 3"
         )
     cleaned, score = _strip_trailing_score_lines(text)

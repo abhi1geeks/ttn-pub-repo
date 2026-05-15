@@ -1,56 +1,72 @@
-"""Supervisor-driven workflow: classify intent, dispatch to Summary / Compare / QnA agents."""
+"""Supervisor-driven workflow: classify intent, dispatch to Summary / Compare / QnA agents.
+
+Two execution engines are available, selected by `WORKFLOW_ENGINE`:
+
+- `langgraph` (default): runs `app.agents.workflow_graph.run_agentic_workflow_graph`.
+- `legacy`: runs the hand-rolled async implementation below (`_run_agentic_workflow_legacy`).
+
+Both paths produce the same `AgenticWorkflowResponse` (including `debug_trace` shape).
+The legacy path is retained as an escape hatch and is exercised by the existing tests.
+"""
 
 from __future__ import annotations
 
-import re
+import logging
+import os
 from typing import Any
 
 from app.agents.compare import run_compare_agent
-from app.agents.guardrails import validate_guardrails
+from app.agents.guardrails import first_agentic_input_policy_violation
+from app.agents.routing_signals import (
+    compare_cross_version_question,
+    requires_full_text_compare_presentation,
+)
 from app.agents.summary import run_summary_agent
 from app.agents.supervisor import classify_intent_async
+from app.pipelines.chat_triage import trivial_chat_reply
+from app.pipelines.followup_suggestions import build_suggested_followups
 from app.pipelines.retrieve_qna import retrieve_and_answer
 from app.schemas import (
     AgenticWorkflowRequest,
     AgenticWorkflowResponse,
     CompareAgentRequest,
-    GuardrailsValidateRequest,
     OrchestrateRequest,
+    OrchestrateResponse,
+    QnAAgentResponse,
 )
 
-# Compare-style phrasing that needs two full texts (or the product diff UI) — do not fake via QnA-only retrieval.
-_FULL_TEXT_COMPARE_QUERY = re.compile(
-    r"(?i)(side[\s-]by[\s-]side|side by side|two[\s-]column|adjacent columns|redline|full[\s-]text[\s-](diff|compare)|"
-    r"diff[\s-]view|column[\s-]by[\s-]column)"
-)
+logger = logging.getLogger(__name__)
 
-# When baseline+current full texts are already on the request, these questions should run CompareAgent
-# even if the supervisor picks qna (LLM rules often steer "differences" to RAG).
-_COMPARE_WHEN_BOTH_TEXTS = re.compile(
-    r"(?i)(\bcompared\s+to\b|\bcompared\s+with\b|\bmain\s+differences\b|\bkey\s+differences\b|\bdifferences\s+between\b|"
-    r"\bredline\b|"
-    r"\b(modified|amended|current|draft)\s+version\b.{0,200}\b(differences?|changes?)\b|"
-    r"\b(differences?|changes?)\b.{0,200}\b(modified|amended|current|draft)\s+version\b|"
-    r"\bofficial\b.{0,200}\b(differences?|changes?|compare|diff)\b|"
-    r"\b(differences?|changes?|compare|diff)\b.{0,200}\bofficial\b)"
-)
+_WORKFLOW_ENGINE_LANGGRAPH = "langgraph"
+_WORKFLOW_ENGINE_LEGACY = "legacy"
 
 
-def _requires_full_text_compare(query: str) -> bool:
-    return bool(_FULL_TEXT_COMPARE_QUERY.search(query))
+def agentic_request_debug_snapshot(body: AgenticWorkflowRequest) -> dict[str, Any]:
+    """Request fields copied into `debug_trace.request` for agentic workflow (legacy + LangGraph)."""
+    out: dict[str, Any] = {
+        "query_preview": body.query[:800],
+        "document_url": body.document_url,
+        "top_k": body.top_k,
+        "qdrant_collection": body.qdrant_collection,
+        "has_compare_context": body.compare_context is not None,
+        "has_summary_context": body.summary_context is not None,
+    }
+    if body.compare_context is not None:
+        out["compare_baseline_chars"] = len(body.compare_context.baseline_text)
+        out["compare_current_chars"] = len(body.compare_context.current_text)
+        out["compare_chunk_changes_count"] = len(body.compare_context.chunk_changes)
+    return out
 
 
-def _compare_context_diff_question(query: str) -> bool:
-    q = query.strip()
-    if _FULL_TEXT_COMPARE_QUERY.search(q):
-        return True
-    return bool(_COMPARE_WHEN_BOTH_TEXTS.search(q))
-
-
-def _finalize(resp: AgenticWorkflowResponse, trace: dict[str, Any] | None, debug: bool) -> AgenticWorkflowResponse:
-    if not debug or trace is None:
-        return resp
-    return resp.model_copy(update={"debug_trace": trace})
+def _finalize(
+    resp: AgenticWorkflowResponse,
+    trace: dict[str, Any] | None,
+    body: AgenticWorkflowRequest,
+) -> AgenticWorkflowResponse:
+    updates: dict[str, Any] = {"suggested_followups": build_suggested_followups(body, resp)}
+    if body.debug and trace is not None:
+        updates["debug_trace"] = trace
+    return resp.model_copy(update=updates)
 
 
 async def _finish_qna_from_retrieval(
@@ -73,7 +89,7 @@ async def _finish_qna_from_retrieval(
                 fallback_from=fallback_from,
             ),
             trace,
-            body.debug,
+            body,
         )
 
     if trace is not None:
@@ -106,7 +122,7 @@ async def _finish_qna_from_retrieval(
                 fallback_from=fallback_from,
             ),
             trace,
-            body.debug,
+            body,
         )
     if outcome == "output_blocked":
         return _finalize(
@@ -120,7 +136,7 @@ async def _finish_qna_from_retrieval(
                 fallback_from=fallback_from,
             ),
             trace,
-            body.debug,
+            body,
         )
     if trace is not None and qna_ans is not None:
         trace["retrieve_qna"]["cited_chunk_indices"] = list(qna_ans.cited_chunk_indices)
@@ -136,85 +152,96 @@ async def _finish_qna_from_retrieval(
             fallback_from=fallback_from,
         ),
         trace,
-        body.debug,
+        body,
     )
+
+
+def _selected_engine() -> str:
+    """Pick the orchestration engine.
+
+    Default is `langgraph`. Any unrecognized value falls back to `legacy` and is logged.
+    """
+    raw = os.environ.get("WORKFLOW_ENGINE", _WORKFLOW_ENGINE_LANGGRAPH).strip().lower()
+    if raw in (_WORKFLOW_ENGINE_LANGGRAPH, _WORKFLOW_ENGINE_LEGACY):
+        return raw
+    logger.warning("WORKFLOW_ENGINE=%r is not recognized; using legacy engine.", raw)
+    return _WORKFLOW_ENGINE_LEGACY
 
 
 async def run_agentic_workflow(body: AgenticWorkflowRequest) -> AgenticWorkflowResponse:
+    """Dispatch to the configured engine (LangGraph by default).
+
+    Both engines must produce the same `AgenticWorkflowResponse` for a given input.
+    """
+    if _selected_engine() == _WORKFLOW_ENGINE_LANGGRAPH:
+        # Imported lazily to avoid a circular import (workflow_graph references
+        # this module to honor test monkeypatches on classify_intent_async /
+        # retrieve_and_answer / _finish_qna_from_retrieval).
+        from app.agents.workflow_graph import run_agentic_workflow_graph
+
+        return await run_agentic_workflow_graph(body)
+    return await _run_agentic_workflow_legacy(body)
+
+
+async def _run_agentic_workflow_legacy(body: AgenticWorkflowRequest) -> AgenticWorkflowResponse:
     trace: dict[str, Any] | None = {} if body.debug else None
     if trace is not None:
-        trace["request"] = {
-            "query_preview": body.query[:800],
-            "document_url": body.document_url,
-            "top_k": body.top_k,
-            "qdrant_collection": body.qdrant_collection,
-            "has_compare_context": body.compare_context is not None,
-            "has_summary_context": body.summary_context is not None,
-        }
-        if body.compare_context is not None:
-            trace["request"]["compare_baseline_chars"] = len(body.compare_context.baseline_text)
-            trace["request"]["compare_current_chars"] = len(body.compare_context.current_text)
-            trace["request"]["compare_chunk_changes_count"] = len(body.compare_context.chunk_changes)
+        trace["request"] = agentic_request_debug_snapshot(body)
 
-    g0 = validate_guardrails(
-        GuardrailsValidateRequest(phase="input", text=body.query, require_chunk_citations=False)
-    )
-    if not g0.allowed:
+    viol = first_agentic_input_policy_violation(body)
+    if viol is not None:
         if trace is not None:
-            trace["guardrails"] = {"phase": "input", "allowed": False, "reason": g0.reason}
+            trace["guardrails"] = {"phase": "input", "allowed": False, "reason": viol}
         return _finalize(
             AgenticWorkflowResponse(
                 intent="blocked",
                 intent_id=0,
                 supervisor_route="blocked",
                 blocked=True,
-                reason=g0.reason,
+                reason=viol,
                 executed=False,
                 needs_input=[],
             ),
             trace,
-            body.debug,
+            body,
         )
 
-    if (
-        not body.force_qna
-        and body.compare_context is not None
-        and _compare_context_diff_question(body.query)
-    ):
+    canned = trivial_chat_reply(body.query)
+    if canned is not None:
         if trace is not None:
-            trace["orchestrate"] = {"route": "compare", "reason": "shortcut_full_texts_and_diff_question"}
-            trace["branch"] = "compare_with_full_context"
-            trace["compare_shortcut"] = True
-            trace["compare_context"] = {
-                "baseline_chars": len(body.compare_context.baseline_text),
-                "current_chars": len(body.compare_context.current_text),
-                "max_chars": body.compare_context.max_chars,
-                "chunk_changes_count": len(body.compare_context.chunk_changes),
-            }
-        cmp_req = CompareAgentRequest(
-            baseline_text=body.compare_context.baseline_text,
-            current_text=body.compare_context.current_text,
-            max_chars=body.compare_context.max_chars,
-            chunk_changes=list(body.compare_context.chunk_changes),
-            user_question=body.query.strip() or None,
-            debug=body.debug,
-        )
-        comparison = await run_compare_agent(cmp_req)
-        if trace is not None and comparison.debug_meta is not None:
-            trace["compare_agent"] = comparison.debug_meta
+            trace["branch"] = "conversational_short_circuit"
         return _finalize(
             AgenticWorkflowResponse(
-                intent="comparison",
-                intent_id=2,
-                supervisor_route="compare",
+                intent="qna",
+                intent_id=3,
+                supervisor_route="conversational",
                 executed=True,
-                comparison=comparison,
+                qna=QnAAgentResponse(
+                    answer=canned,
+                    cited_chunk_indices=[],
+                    model_id="none",
+                    stub=False,
+                ),
             ),
             trace,
-            body.debug,
+            body,
         )
 
-    orch = await classify_intent_async(OrchestrateRequest(user_message=body.query, document_url=body.document_url))
+    orch = await classify_intent_async(
+        OrchestrateRequest(
+            user_message=body.query,
+            document_url=body.document_url,
+            full_compare_texts_attached=body.compare_context is not None,
+            ingest_delta_context_attached=body.summary_context is not None,
+        )
+    )
+    if (
+        body.compare_context is not None
+        and compare_cross_version_question(body.query)
+        and (not body.force_qna or requires_full_text_compare_presentation(body.query))
+        and orch.route != "blocked"
+    ):
+        orch = OrchestrateResponse(route="compare", reason="full_text_attachment_intent")
     if trace is not None:
         trace["orchestrate"] = {"route": orch.route, "reason": orch.reason}
 
@@ -236,17 +263,15 @@ async def run_agentic_workflow(body: AgenticWorkflowRequest) -> AgenticWorkflowR
                 needs_input=[],
             ),
             trace,
-            body.debug,
+            body,
         )
 
     if orch.route == "compare":
-        if body.force_qna and body.document_url:
-            if trace is not None:
-                trace["branch"] = "compare_force_qna"
-            return await _finish_qna_from_retrieval(
-                body, supervisor_route="compare", fallback_from="compare", trace=trace
-            )
-        if body.compare_context is not None:
+        # Prefer full-text CompareAgent when context is present, even if force_qna is on, for explicit
+        # side-by-side / page-wise / redline phrasing (matches pre-orchestrator shortcut).
+        if body.compare_context is not None and (
+            not body.force_qna or requires_full_text_compare_presentation(body.query)
+        ):
             if trace is not None:
                 trace["branch"] = "compare_with_full_context"
                 trace["compare_context"] = {
@@ -275,10 +300,16 @@ async def run_agentic_workflow(body: AgenticWorkflowRequest) -> AgenticWorkflowR
                     comparison=comparison,
                 ),
                 trace,
-                body.debug,
+                body,
+            )
+        if body.force_qna and body.document_url:
+            if trace is not None:
+                trace["branch"] = "compare_force_qna"
+            return await _finish_qna_from_retrieval(
+                body, supervisor_route="compare", fallback_from="compare", trace=trace
             )
         if body.document_url:
-            if _requires_full_text_compare(body.query):
+            if requires_full_text_compare_presentation(body.query):
                 if trace is not None:
                     trace["branch"] = "compare_needs_context_side_by_side_query"
                     trace["needs_compare_context"] = True
@@ -295,10 +326,10 @@ async def run_agentic_workflow(body: AgenticWorkflowRequest) -> AgenticWorkflowR
                         ),
                     ),
                     trace,
-                    body.debug,
+                    body,
                 )
             if trace is not None:
-                trace["branch"] = "compare_fallback_qna_keyword_not_side_by_side"
+                trace["branch"] = "compare_fallback_qna_not_full_text_presentation"
             return await _finish_qna_from_retrieval(body, supervisor_route="compare", fallback_from="compare", trace=trace)
         if trace is not None:
             trace["branch"] = "compare_needs_context_no_document_url"
@@ -311,7 +342,7 @@ async def run_agentic_workflow(body: AgenticWorkflowRequest) -> AgenticWorkflowR
                 needs_input=["compare_context.baseline_text", "compare_context.current_text"],
             ),
             trace,
-            body.debug,
+            body,
         )
 
     if orch.route == "summary":
@@ -334,7 +365,7 @@ async def run_agentic_workflow(body: AgenticWorkflowRequest) -> AgenticWorkflowR
                     summary=summary,
                 ),
                 trace,
-                body.debug,
+                body,
             )
         if body.document_url:
             if trace is not None:
@@ -353,7 +384,7 @@ async def run_agentic_workflow(body: AgenticWorkflowRequest) -> AgenticWorkflowR
                 ],
             ),
             trace,
-            body.debug,
+            body,
         )
 
     if trace is not None:

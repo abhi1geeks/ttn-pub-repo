@@ -195,6 +195,35 @@ def test_agentic_compare_shortcut_respects_force_qna(monkeypatch: pytest.MonkeyP
     asyncio.run(_go())
 
 
+def test_agentic_side_by_side_runs_compare_even_with_force_qna(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Agents tab uses force_qna; explicit side-by-side ask must still use CompareAgent when full texts are sent."""
+    monkeypatch.setenv("AGENTS_STUB_LLM", "1")
+
+    async def always_compare(_req: OrchestrateRequest) -> OrchestrateResponse:
+        return OrchestrateResponse(route="compare")
+
+    monkeypatch.setattr("app.agents.agentic_workflow.classify_intent_async", always_compare)
+
+    async def _go() -> None:
+        body = AgenticWorkflowRequest(
+            query="can you show me changes side by side?",
+            document_url="http://example/doc",
+            force_qna=True,
+            compare_context=CompareContext(
+                baseline_text="Official … " * 20,
+                current_text="Modified … " * 20,
+            ),
+        )
+        out = await run_agentic_workflow(body)
+        assert out.intent == "comparison"
+        assert out.intent_id == 2
+        assert out.executed is True
+        assert out.comparison is not None
+        assert out.qna is None
+
+    asyncio.run(_go())
+
+
 def test_agentic_summary_fallback_to_qna_when_no_summary_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENTS_STUB_LLM", "1")
 
