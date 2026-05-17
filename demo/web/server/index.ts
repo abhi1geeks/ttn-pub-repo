@@ -5,8 +5,15 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { buildSideBySideRows, buildUnifiedDiffLines } from "../src/lib/diff";
+import { documentUrlsMatch } from "../src/lib/document_url";
 import { registerAuthApiGate, registerAuthRoutes, isAuthEnabled } from "./auth";
 import { extractRetrieveFirst, extractScrollPoints, qdrantPost } from "./qdrant";
+import {
+  artifactExists,
+  documentUrlHash,
+  readArtifactJson,
+  resolveArtifactPath,
+} from "./artifacts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -169,6 +176,293 @@ app.post("/api/runs/review", async (req, res) => {
     });
 
     res.json({ ok: true, hitlReview });
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+function findRunByUrlVersion(
+  runs: Record<string, unknown>[],
+  documentUrl: string,
+  versionId: string,
+): Record<string, unknown> | null {
+  const v = versionId.trim();
+  const u = documentUrl.trim();
+  for (const r of runs) {
+    if (
+      documentUrlsMatch(String(r.documentUrl ?? ""), u) &&
+      String(r.versionId ?? r.timestamp ?? "") === v
+    ) {
+      return r;
+    }
+  }
+  return null;
+}
+
+function readLayoutForVersion(
+  urlHash: string,
+  versionId: string,
+): { layout: Record<string, unknown>; path: string } | null {
+  for (const vid of [versionId, versionId.replace(/:/g, "-")]) {
+    const rel = `layout/${urlHash}/${vid}.json`;
+    const layout = readArtifactJson<Record<string, unknown>>(rel);
+    if (layout) return { layout, path: rel };
+  }
+  return null;
+}
+
+async function computeAlignedChangesViaAgents(
+  documentUrl: string,
+  baselineVersionId: string,
+  currentVersionId: string,
+  urlHash: string,
+): Promise<{
+  alignedChanges: unknown[];
+  summary: Record<string, number>;
+} | null> {
+  if (!AGENTS_URL) return null;
+  const r = await fetch(`${AGENTS_URL}/v1/ingest/aligned-changes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      documentUrl,
+      baselineVersionId,
+      currentVersionId,
+      urlHash,
+    }),
+  });
+  if (!r.ok) return null;
+  const data = (await r.json()) as {
+    alignedChanges?: unknown[];
+    summary?: Record<string, number>;
+  };
+  if (!Array.isArray(data.alignedChanges)) return null;
+  return {
+    alignedChanges: data.alignedChanges,
+    summary: data.summary ?? {},
+  };
+}
+
+async function computeDiffRegionsViaAgents(
+  documentUrl: string,
+  baselineVersionId: string,
+  currentVersionId: string,
+  urlHash: string,
+): Promise<unknown[] | null> {
+  if (!AGENTS_URL) return null;
+  const r = await fetch(`${AGENTS_URL}/v1/ingest/diff-regions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      documentUrl,
+      baselineVersionId,
+      currentVersionId,
+      urlHash,
+    }),
+  });
+  if (!r.ok) return null;
+  const data = (await r.json()) as { changeRegions?: unknown[]; regions?: unknown[] };
+  const regions = data.changeRegions ?? data.regions;
+  return Array.isArray(regions) ? regions : null;
+}
+
+app.get("/api/runs/pdf", async (req, res) => {
+  const documentUrl = String(req.query.documentUrl ?? "").trim();
+  const versionId = String(req.query.versionId ?? "").trim();
+  if (!documentUrl || !versionId) {
+    res.status(400).json({ error: "Missing documentUrl or versionId." });
+    return;
+  }
+  try {
+    const out = await qdrantPost(QDRANT_URL, QDRANT_API_KEY || undefined, `/collections/${RUNS_COLLECTION}/points/scroll`, {
+      limit: 1000,
+      with_payload: true,
+      with_vector: false,
+    });
+    const points = extractScrollPoints(out);
+    const runs = points.map((p) => p.payload as Record<string, unknown>);
+    const run = findRunByUrlVersion(runs, documentUrl, versionId);
+    const pdfArtifact = run?.pdfArtifact as { path?: string } | undefined;
+    const rel = pdfArtifact?.path;
+    if (!rel) {
+      res.status(404).json({ error: "No pdfArtifact for this run. Re-run ingest with PDF storage enabled." });
+      return;
+    }
+    const abs = resolveArtifactPath(rel);
+    if (!abs || !artifactExists(rel)) {
+      res.status(404).json({ error: "PDF file not found on artifact volume." });
+      return;
+    }
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${versionId.replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf"`);
+    fs.createReadStream(abs).pipe(res);
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.get("/api/runs/diff-regions", async (req, res) => {
+  const documentUrl = String(req.query.documentUrl ?? "").trim();
+  const baselineVersionId = String(req.query.baselineVersionId ?? "").trim();
+  const currentVersionId = String(req.query.currentVersionId ?? "").trim();
+  if (!documentUrl || !baselineVersionId || !currentVersionId) {
+    res.status(400).json({ error: "Missing documentUrl, baselineVersionId, or currentVersionId." });
+    return;
+  }
+  try {
+    const hash = documentUrlHash(documentUrl);
+    const rel = `diff/${hash}/${baselineVersionId}__${currentVersionId}.json`;
+    const data = readArtifactJson<{ regions?: unknown[] }>(rel);
+    if (data?.regions && Array.isArray(data.regions) && data.regions.length) {
+      res.json({ regions: data.regions, source: "artifact", path: rel });
+      return;
+    }
+    const out = await qdrantPost(QDRANT_URL, QDRANT_API_KEY || undefined, `/collections/${RUNS_COLLECTION}/points/scroll`, {
+      limit: 1000,
+      with_payload: true,
+      with_vector: false,
+    });
+    const runs = extractScrollPoints(out).map((p) => p.payload as Record<string, unknown>);
+    const run = findRunByUrlVersion(runs, documentUrl, currentVersionId);
+    const fromPayload = run?.changeRegions;
+    if (Array.isArray(fromPayload) && fromPayload.length) {
+      res.json({ regions: fromPayload, source: "qdrant" });
+      return;
+    }
+    const computed = await computeDiffRegionsViaAgents(
+      documentUrl,
+      baselineVersionId,
+      currentVersionId,
+      hash,
+    );
+    if (computed?.length) {
+      res.json({ regions: computed, source: "computed" });
+      return;
+    }
+    const baseLayout = readLayoutForVersion(hash, baselineVersionId);
+    const curLayout = readLayoutForVersion(hash, currentVersionId);
+    if (!baseLayout || !curLayout) {
+      res.status(404).json({
+        error:
+          "No layout JSON for one or both runs. Re-run ingest so HTTP: Process Ingest Artifacts succeeds on both versions.",
+        hasBaselineLayout: Boolean(baseLayout),
+        hasCurrentLayout: Boolean(curLayout),
+      });
+      return;
+    }
+    res.json({ regions: [], source: "computed-empty" });
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.get("/api/runs/aligned-changes", async (req, res) => {
+  const documentUrl = String(req.query.documentUrl ?? "").trim();
+  const baselineVersionId = String(req.query.baselineVersionId ?? "").trim();
+  const currentVersionId = String(req.query.currentVersionId ?? "").trim();
+  if (!documentUrl || !baselineVersionId || !currentVersionId) {
+    res.status(400).json({ error: "Missing documentUrl, baselineVersionId, or currentVersionId." });
+    return;
+  }
+  try {
+    const hash = documentUrlHash(documentUrl);
+    const rel = `aligned/${hash}/${baselineVersionId}__${currentVersionId}.json`;
+    const data = readArtifactJson<{
+      changes?: unknown[];
+      alignedChanges?: unknown[];
+      summary?: Record<string, number>;
+    }>(rel);
+    const changes = data?.changes ?? data?.alignedChanges;
+    if (Array.isArray(changes) && changes.length) {
+      res.json({
+        alignedChanges: changes,
+        summary: data?.summary ?? {},
+        source: "artifact",
+        path: rel,
+      });
+      return;
+    }
+    const out = await qdrantPost(QDRANT_URL, QDRANT_API_KEY || undefined, `/collections/${RUNS_COLLECTION}/points/scroll`, {
+      limit: 1000,
+      with_payload: true,
+      with_vector: false,
+    });
+    const runs = extractScrollPoints(out).map((p) => p.payload as Record<string, unknown>);
+    const run = findRunByUrlVersion(runs, documentUrl, currentVersionId);
+    const fromPayload = run?.alignedChanges;
+    if (Array.isArray(fromPayload) && fromPayload.length) {
+      res.json({
+        alignedChanges: fromPayload,
+        summary: (run?.alignedSummary as Record<string, number>) ?? {},
+        source: "qdrant",
+      });
+      return;
+    }
+    const computed = await computeAlignedChangesViaAgents(
+      documentUrl,
+      baselineVersionId,
+      currentVersionId,
+      hash,
+    );
+    if (computed?.alignedChanges?.length) {
+      res.json({ ...computed, source: "computed" });
+      return;
+    }
+    const baseLayout = readLayoutForVersion(hash, baselineVersionId);
+    const curLayout = readLayoutForVersion(hash, currentVersionId);
+    if (!baseLayout || !curLayout) {
+      res.status(404).json({
+        error:
+          "No layout JSON for one or both runs. Re-run ingest so HTTP: Process Ingest Artifacts succeeds on both versions.",
+        hasBaselineLayout: Boolean(baseLayout),
+        hasCurrentLayout: Boolean(curLayout),
+      });
+      return;
+    }
+    res.json({
+      alignedChanges: [],
+      summary: { inserted: 0, deleted: 0, modified: 0, moved: 0 },
+      source: "computed-empty",
+    });
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.get("/api/runs/layout", async (req, res) => {
+  const documentUrl = String(req.query.documentUrl ?? "").trim();
+  const versionId = String(req.query.versionId ?? "").trim();
+  if (!documentUrl || !versionId) {
+    res.status(400).json({ error: "Missing documentUrl or versionId." });
+    return;
+  }
+  try {
+    const out = await qdrantPost(QDRANT_URL, QDRANT_API_KEY || undefined, `/collections/${RUNS_COLLECTION}/points/scroll`, {
+      limit: 1000,
+      with_payload: true,
+      with_vector: false,
+    });
+    const runs = extractScrollPoints(out).map((p) => p.payload as Record<string, unknown>);
+    const run = findRunByUrlVersion(runs, documentUrl, versionId);
+    const layoutArtifact = run?.layoutArtifact as { path?: string } | undefined;
+    const hash = documentUrlHash(documentUrl);
+    let layout: Record<string, unknown> | null = null;
+    let rel = layoutArtifact?.path ?? "";
+    if (rel && artifactExists(rel)) {
+      layout = readArtifactJson<Record<string, unknown>>(rel);
+    }
+    if (!layout) {
+      const hit = readLayoutForVersion(hash, versionId);
+      if (hit) {
+        layout = hit.layout;
+        rel = hit.path;
+      }
+    }
+    if (!layout) {
+      res.status(404).json({ error: "Layout not found for this run." });
+      return;
+    }
+    res.json({ layout, path: rel });
   } catch (e) {
     res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
   }

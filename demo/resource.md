@@ -1,7 +1,7 @@
 
 create two collection:
 1. regulatory_docs
-<!-- 2. regulatory_docs_runs -->
+2. regulatory_docs_runs
 
 
 export QDRANT_URL=http://localhost:6333 && curl -X PUT $QDRANT_URL/collections/regulatory_docs_runs \
@@ -47,15 +47,7 @@ curl -X PUT $QDRANT_URL/collections/regulatory_docs/index \
 
 
 
-https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf
-
-
-https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf
-
-
-https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/refs/heads/main/regulation-14-as-of-02-26.pdf
-
-
+https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/regulation-14-as-of-02-26.pdf
 
 
 
@@ -67,7 +59,7 @@ Access the Dashboards:
     n8n: Visit http://localhost:5678 to start building workflows.
     Qdrant Dashboard: Visit http://localhost:6333/dashboard to view your vector collections.
 
-## Redeploy (Docker Compose)
+## Redeploy (docker-compose)
 
 From this **`demo/`** directory (where `docker-compose.yml` lives), after changing **`agents_api`**, **`web`**, or compose env:
 
@@ -120,7 +112,7 @@ docker-compose up -d
 If recreate fails again
 
 ```bash
-docker ps -a | grep -E 'regulatory-agents|regulatory-web|_qdrant'
+docker ps -a | grep -E 'regulatory-agents|demo_web|qdrant'
 docker rm -f <exited-container-id>
 
 docker ps -a --format '{{.ID}} {{.Names}} {{.Status}}' | grep -i web; docker rm -f f9c22a70e3e8 2>/dev/null; docker rm -f regulatory-web 2>/dev/null; cd /home/abhishek-kumar/Documents/RnD/n8n_diff/demo && docker-compose up -d web 2>&1
@@ -128,20 +120,20 @@ docker ps -a --format '{{.ID}} {{.Names}} {{.Status}}' | grep -i web; docker rm 
 docker-compose up -d agents web qdrant
 ```
 
-If your host uses the Compose V2 plugin only, replace `docker-compose` with `docker compose` (same flags).
+If your host uses the Compose V2 plugin only, replace `docker-compose` with `docker-compose` (same flags).
 
 ### `KeyError: 'ContainerConfig'`
  this happens again after an image/config change, use:
 
-docker rm -f <exited-web-container-id> then docker-compose up -d web, or move to docker compose v2 to avoid that bug.
+docker rm -f <exited-web-container-id> then docker-compose up -d web, or move to docker-compose v2 to avoid that bug.
 
 That error almost always means **standalone `docker-compose` v1 (Python)** is **too old** for your **Docker Engine** (common after Docker 25+). The old client expects fields in `docker inspect` that are no longer returned.
 
 **Fix (recommended):** use the **Compose V2 plugin** instead of the legacy binary:
 
 ```bash
-docker compose version
-docker compose up -d --build
+docker-compose version
+docker-compose up -d --build
 ```
 
 **Alternative:** upgrade or replace the legacy CLI, e.g. install the **`docker-compose-plugin`** package from Docker’s repo, or upgrade pip install: `pip install -U "docker-compose>=1.29.2"` (then retry `docker-compose up -d`).
@@ -195,3 +187,123 @@ Optional sanity URLs
 Web health: http://localhost:8787/api/health
 Agents (direct): http://localhost:8000/health
 I cannot open your browser from here; use the links above on your machine.
+
+
+
+
+
+
+===============
+
+
+
+
+Option A — Local dev (recommended for day-to-day)
+Run agents and web on the host; Qdrant can stay in Docker.
+
+1. Start Qdrant (if not running)
+cd /home/abhishek-kumar/Documents/RnD/n8n_diff/demo
+docker-compose up -d qdrant
+2. Start agents_api on port 8000
+cd /home/abhishek-kumar/Documents/RnD/n8n_diff/demo/agents_api
+<!-- python3 -m venv .venv -->
+source .venv/bin/activate
+pip install -r requirements.txt
+AGENTS_STUB_LLM=1 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+Check:
+
+curl -s http://127.0.0.1:8000/health
+You should see something like {"ok":true,"stub_llm":true,...}.
+
+3. Start the web app
+In a second terminal:
+
+cd /home/abhishek-kumar/Documents/RnD/n8n_diff/demo/web
+npm install   # first time only
+npm run dev
+Open http://localhost:9780 (from WEB_PORT=9780).
+
+4. Confirm the proxy is on
+curl -s http://localhost:9780/api/health
+Look for "agentsProxy":true. If it is false, AGENTS_URL is missing or the web server was started before you edited .env — restart npm run dev.
+
+5. Smoke-test through the BFF
+curl -s http://localhost:9780/api/agents/health
+That should match the agents /health response (proxied via /api/agents/*).
+
+Option B — Everything in docker-compose
+cd /home/abhishek-kumar/Documents/RnD/n8n_diff/demo
+docker-compose up -d --build agents qdrant web
+agents → host http://127.0.0.1:8000
+web → host http://localhost:8787
+Compose sets AGENTS_URL=http://agents:8000 inside the web container (overrides your host-oriented URL for that service).
+Use 8787 for the UI in this mode, not 9780.
+
+How the wiring works
+Layer	URL
+Browser
+POST http://localhost:9780/api/agents/v1/agents/cross-jurisdiction
+Node BFF (web/server/index.ts)
+Forwards to {AGENTS_URL}/v1/agents/cross-jurisdiction
+FastAPI
+http://127.0.0.1:8000/v1/agents/cross-jurisdiction
+AGENTS_URL must be the root of the agents service (no /v1 suffix, no trailing slash).
+
+Common issues
+Symptom	Fix
+agentsProxy: false
+Set AGENTS_URL=http://127.0.0.1:8000 in web/.env and restart npm run dev
+Connection refused on compare/gap
+Start uvicorn on 8000, or change AGENTS_URL to match your port
+Works in Docker web, not local
+Local dev needs 127.0.0.1:8000, not http://agents:8000 (agents is only a Docker DNS name)
+Login required
+Your .env has WEB_LOGIN_USER / WEB_LOGIN_PASSWORD — sign in at the UI first
+Optional: real LLM instead of stub
+AGENTS_STUB_LLM=0 AWS_REGION=us-east-1 uvicorn app.main:app --reload --port 8000
+With AWS credentials in the environment (never commit them). Default stub (AGENTS_STUB_LLM=1) is enough to exercise 2.3 / 2.4 with structured stub output.
+
+If you want, we can add a one-line docker-compose profile or a small scripts/dev-up.sh so both services start together.
+
+
+
+=======
+
+demo/scripts/dev-up.sh
+Starts agents_api with uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 (default) in the background.
+Then runs web with npm run dev in the foreground (same terminal as today).
+Ctrl+C (or exit) runs a trap that stops the uvicorn process.
+AGENTS_STUB_LLM defaults to 1; override when you run the script, e.g. AGENTS_STUB_LLM=0 ./scripts/dev-up.sh.
+UVICORN_PORT: default 8000; if you change it, set AGENTS_URL in web/.env to the same host/port.
+SKIP_AGENTS=1: only starts the web app (no Python service).
+If agents_api/.venv exists, it is activated; otherwise it falls back to python3 on PATH and prints a warning.
+The script is executable (chmod +x).
+
+
+<!-- cd /home/abhishek-kumar/Documents/RnD/n8n_diff/demo
+./scripts/dev-up.sh -->
+
+cd /home/abhishek-kumar/Documents/RnD/n8n_diff/demo
+AGENTS_STUB_LLM=0 AWS_REGION=us-east-1 ./scripts/dev-up.sh
+
+
+==========
+docker-compose build web && docker-compose rm -sf web && docker rm -f regulatory-web 2>/dev/null; docker-compose up -d web
+
+
+
+=====
+
+For ingest / agents only (fast):
+
+docker-compose build agents
+docker-compose up -d agents n8n
+Full stack including web (slower first time, cached after):
+
+
+./scripts/compose-up.sh --build-all
+
+
+=== Remove the bad file (optional)
+
+docker exec n8n rm -f /data/regulatory/pdfs/aefc061c77d64b2e/2026-05-17T06:14:46.868Z.pdf

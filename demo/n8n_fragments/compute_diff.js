@@ -40,6 +40,8 @@ return [
       pdfPageCount: f.pdfPageCount,
       pdfPageCountSource: f.pdfPageCountSource,
       sourceIngest,
+      pdfArtifact: f.pdfArtifact || null,
+      urlHash: f.urlHash || null,
     },
   },
 ];

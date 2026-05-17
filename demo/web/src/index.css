@@ -3,6 +3,13 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --gli-surface: 250 250 250;
+    --gli-accent: 5 150 105;
+    --gli-muted: 113 113 122;
+    --gli-border: 228 228 231;
+  }
+
   html {
     @apply scroll-smooth;
   }

@@ -94,6 +94,8 @@ const runRecord = {
   ...(diff.sourceIngest && typeof diff.sourceIngest === 'object'
     ? { sourceIngest: diff.sourceIngest }
     : {}),
+  ...(diff.pdfArtifact && typeof diff.pdfArtifact === 'object' ? { pdfArtifact: diff.pdfArtifact } : {}),
+  ...(diff.urlHash ? { urlHash: diff.urlHash } : {}),
   summary: diff.summary,
   added: (diff.toInsert || []).map((c) => ({
     pointId: c.pointId,

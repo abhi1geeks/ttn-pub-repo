@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AssistantResponseAvatar, UserQueryAvatar } from "./chat/ChatRoleAvatars";
 import { parseInlineAgentText, structureAgentAnswer } from "../lib/agentAnswerFormat";
-
+import { welcomeUsernameDisplay } from "../lib/auth_display";
+import {
+  classifyDocumentScope,
+  reggptScopeBadgeClass,
+  reggptScopeShortLabel,
+  type ReggptScopeKind,
+} from "../lib/reggpt_scope";
 type BffHealth = {
   ok?: boolean;
   agentsProxy?: boolean;
@@ -69,22 +75,22 @@ function uid(): string {
 
 function AssistantWelcomeIntro({
   isDock,
+  welcomeDisplayName,
   documentUrl,
   proxyOn,
+  scopeKind,
+  ingestedRunCount,
 }: {
   isDock: boolean;
+  welcomeDisplayName: string | null;
   documentUrl: string;
   proxyOn: boolean;
+  scopeKind: ReggptScopeKind;
+  ingestedRunCount: number;
 }) {
-  const titleCls = isDock ? "text-[15px] font-semibold leading-snug text-zinc-900" : "text-base font-semibold text-zinc-900";
-  const bodyCls = isDock ? "text-[13px] leading-relaxed text-zinc-800" : "text-sm leading-relaxed text-zinc-800";
-  const listCls = isDock ? "mt-2 list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-zinc-800" : "mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-zinc-800";
-  const footCls = isDock ? "mt-3 text-[12px] leading-relaxed text-zinc-600" : "mt-3 text-xs leading-relaxed text-zinc-600";
-
-  const bubble =
-    isDock
-      ? "min-w-0 max-w-[min(100%,calc(100%-2.75rem))] rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-3.5 py-3 shadow-md ring-1 ring-zinc-200/60"
-      : "min-w-0 max-w-[min(100%,40rem)] rounded-2xl rounded-bl-md border border-zinc-200/90 bg-white px-4 py-3 shadow-sm ring-1 ring-zinc-100/80";
+  const bubble = isDock
+    ? "min-w-0 max-w-[min(100%,calc(100%-2.75rem))] rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-3.5 py-3 shadow-md ring-1 ring-zinc-200/60"
+    : "min-w-0 max-w-[min(100%,40rem)] rounded-2xl rounded-bl-md border border-zinc-200/90 bg-white px-4 py-3.5 shadow-sm ring-1 ring-zinc-100/80";
 
   return (
     <div className="flex justify-start gap-2">
@@ -92,63 +98,62 @@ function AssistantWelcomeIntro({
         <AssistantResponseAvatar size={isDock ? "md" : "sm"} />
       </span>
       <div className={bubble}>
-        <p className={titleCls}>Hi — I&apos;m your regulatory assistant.</p>
-        <p className={`mt-2 ${bodyCls}`}>
-          I help you work with the <strong className="font-semibold text-zinc-900">indexed PDF runs</strong> for this
-          product: ask grounded questions, compare ingests, and interpret change signals — without replacing your own
-          legal review.
+        <p className={isDock ? "text-[15px] font-semibold text-zinc-900" : "text-base font-semibold text-zinc-900"}>
+          RegGPT
+        </p>
+        <p
+          className={
+            isDock ? "mt-1 text-[13px] leading-relaxed text-zinc-600" : "mt-1 text-sm leading-relaxed text-zinc-600"
+          }
+        >
+          {welcomeDisplayName ? (
+            <>
+              Hello, <span className="font-medium text-zinc-800">{welcomeDisplayName}</span>.
+              <br />
+            </>
+          ) : null}
+          Grounded Q&amp;A on your indexed regulatory documents.
         </p>
         {documentUrl ? (
-          <p className={`mt-2 ${isDock ? "text-[12px]" : "text-xs"} leading-snug text-zinc-600`}>
-            <span className="font-semibold text-zinc-700">Current scope: </span>
-            <span className="break-all font-mono text-zinc-800">{documentUrl}</span>
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ${reggptScopeBadgeClass(scopeKind)}`}
+            >
+              {reggptScopeShortLabel(scopeKind)}
+            </span>
+            <span
+              className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                ingestedRunCount > 0
+                  ? "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200/80"
+                  : "bg-amber-50 text-amber-900 ring-1 ring-amber-200/80"
+              }`}
+            >
+              {ingestedRunCount > 0
+                ? `${ingestedRunCount} indexed run${ingestedRunCount === 1 ? "" : "s"}`
+                : "Not indexed yet"}
+            </span>
+          </div>
         ) : (
-          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50/80 px-2 py-1.5 text-[12px] text-amber-950">
-            Select a run with a document URL to send questions. You can still read this introduction anytime.
-          </p>
+          <p className="mt-3 text-[13px] text-zinc-600">Select an ingested document to start.</p>
         )}
-        <p className={`mt-2 ${bodyCls}`}>Here is what I can do for you in this app:</p>
-        <ul className={listCls}>
-          <li>
-            <strong className="font-semibold text-zinc-900">Document Q&amp;A</strong> — answer from retrieved chunks for
-            the scoped URL, with citations when the model includes them (for example{" "}
-            <span className="font-mono text-[12px] text-zinc-700">[chunk:12]</span>).
-          </li>
-          <li>
-            <strong className="font-semibold text-zinc-900">Compare &amp; redline context</strong> — when baseline and
-            current full text are available from your ingest/compare workflow, I can route to compare-style narratives.
-          </li>
-          <li>
-            <strong className="font-semibold text-zinc-900">Summaries &amp; materiality hints</strong> — when ingest
-            summary context is attached, I can surface delta-style summaries the workflow exposes.
-          </li>
-          <li>
-            <strong className="font-semibold text-zinc-900">Quick orientation</strong> — short replies for greetings or
-            &quot;what can you do?&quot; without fabricating obligations from the document.
-          </li>
-        </ul>
-        <p className={`mt-2 ${isDock ? "text-[12px]" : "text-xs"} leading-relaxed text-zinc-600`}>
-          I do <strong className="font-medium text-zinc-800">not</strong> provide legal advice. Treat every answer as
-          draft analysis tied to the excerpts and runs you scope — verify against source PDFs and your process.
-        </p>
         {!proxyOn ? (
-          <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50/90 px-2 py-1.5 text-[12px] font-medium text-rose-950">
-            Agents API is offline from this browser session. Check the web server&apos;s agents proxy and that the
-            agents service is running before sending questions.
+          <p className="mt-3 rounded-lg border border-rose-200/90 bg-rose-50 px-2.5 py-2 text-[12px] text-rose-950">
+            Agents service unavailable — check the proxy and API before sending messages.
           </p>
         ) : null}
-        <p className={footCls}>
-          <span className="font-semibold text-zinc-700">Try asking: </span>
-          &quot;What are the main obligations?&quot;, &quot;What changed between these two ingests?&quot;, or &quot;What
-          filing deadlines apply?&quot; — type below and press Enter to send.
+        <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
+          Draft analysis only — not legal advice. Confirm against source documents and your compliance process.
         </p>
       </div>
     </div>
   );
 }
 
-function formatAssistantBody(data: AgenticJson, dockUi = false): ReactNode {
+function formatAssistantBody(
+  data: AgenticJson,
+  dockUi = false,
+  onChunkClick?: (chunkIndex: number) => void,
+): ReactNode {
   const qna = data.qna;
   const summary = data.summary;
   const comp = data.comparison;
@@ -160,6 +165,11 @@ function formatAssistantBody(data: AgenticJson, dockUi = false): ReactNode {
   const bodyText = dockUi ? "text-[13px] leading-relaxed" : "text-sm leading-relaxed";
   const labelText = dockUi ? "text-[11px] font-semibold uppercase tracking-wide text-zinc-600" : "text-[11px] font-semibold uppercase tracking-wide text-zinc-500";
 
+  const isConversationalShort =
+    data.supervisor_route === "conversational" &&
+    data.qna?.model_id === "none" &&
+    Boolean(data.qna?.answer);
+
   const metaBits: string[] = [];
   if (data.intent != null) metaBits.push(String(data.intent));
   if (data.supervisor_route != null) metaBits.push(String(data.supervisor_route));
@@ -167,7 +177,7 @@ function formatAssistantBody(data: AgenticJson, dockUi = false): ReactNode {
   else if (data.executed === false) metaBits.push("not executed");
   if (data.fallback_from) metaBits.push(`fallback: ${data.fallback_from}`);
 
-  const metaLine = metaBits.length > 0 ? metaBits.join(" · ") : null;
+  const metaLine = isConversationalShort ? null : metaBits.length > 0 ? metaBits.join(" · ") : null;
 
   let body: ReactNode = null;
 
@@ -181,6 +191,9 @@ function formatAssistantBody(data: AgenticJson, dockUi = false): ReactNode {
       </div>
     );
   } else if (data.executed && qna?.answer) {
+    if (isConversationalShort) {
+      body = <div className={`${mt} text-zinc-800`}>{structureAgentAnswer(qna.answer, onChunkClick)}</div>;
+    } else {
     const cited = Array.isArray(qna.cited_chunk_indices) ? qna.cited_chunk_indices : [];
     const modelNote = [qna.stub ? "stub response" : null, qna.model_id ? `model ${qna.model_id}` : null]
       .filter(Boolean)
@@ -189,7 +202,7 @@ function formatAssistantBody(data: AgenticJson, dockUi = false): ReactNode {
       <div className={`${mt} ${gapMain} text-zinc-800`}>
         <div>
           <p className={labelText}>Answer</p>
-          <div className={mtTight}>{structureAgentAnswer(qna.answer)}</div>
+          <div className={mtTight}>{structureAgentAnswer(qna.answer, onChunkClick)}</div>
         </div>
         {cited.length > 0 ? (
           <div>
@@ -210,6 +223,7 @@ function formatAssistantBody(data: AgenticJson, dockUi = false): ReactNode {
         {modelNote ? <p className={`${dockUi ? "text-xs" : "text-[11px]"} text-zinc-600`}>{modelNote}</p> : null}
       </div>
     );
+    }
   } else if (data.executed && comp) {
     body = (
       <div className={`${mt} ${gapSec} text-zinc-800`}>
@@ -288,18 +302,25 @@ function formatAssistantBody(data: AgenticJson, dockUi = false): ReactNode {
 
 export function AgentsPanel({
   documentUrl,
+  sessionUser = null,
+  ingestedRunCount = 0,
   compareBaselineText = "",
   compareCurrentText = "",
   compareChunkChanges = [],
+  onNavigateToChunk,
   variant = "panel",
 }: {
   documentUrl: string;
+  /** From `/api/auth/me` when login is enabled — used only for welcome greeting. */
+  sessionUser?: string | null;
+  ingestedRunCount?: number;
   /** From Document tab → Compare ingests: Baseline (older) run `fullText` (same as Readable diff). */
   compareBaselineText?: string;
   /** From Document tab → Compare ingests: Current (newer) run `fullText`. */
   compareCurrentText?: string;
   /** From current run ingest delta: added/removed chunk excerpts (Embedding delta tab). */
   compareChunkChanges?: { kind: "added" | "removed"; chunk_index: number | null; excerpt: string }[];
+  onNavigateToChunk?: (chunkIndex: number) => void;
   /** `dock`: compact chrome for the floating chat; `panel`: full page header (legacy). */
   variant?: "panel" | "dock";
 }) {
@@ -311,6 +332,8 @@ export function AgentsPanel({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDock = variant === "dock";
+  const scopeKind = useMemo(() => classifyDocumentScope(documentUrl), [documentUrl]);
+  const welcomeDisplayName = useMemo(() => welcomeUsernameDisplay(sessionUser), [sessionUser]);
 
   const loadBffHealth = useCallback(async () => {
     setErr(null);
@@ -366,6 +389,7 @@ export function AgentsPanel({
           qdrant_api_key: "",
           top_k: 8,
           force_qna: true,
+          ...(welcomeDisplayName ? { user_display_name: welcomeDisplayName } : {}),
           ...(compare_context ? { compare_context } : {}),
         }),
       });
@@ -591,7 +615,14 @@ export function AgentsPanel({
         }
       >
         {messages.length === 0 ? (
-          <AssistantWelcomeIntro isDock={isDock} documentUrl={documentUrl} proxyOn={proxyOn} />
+          <AssistantWelcomeIntro
+            isDock={isDock}
+            welcomeDisplayName={welcomeDisplayName}
+            documentUrl={documentUrl}
+            proxyOn={proxyOn}
+            scopeKind={scopeKind}
+            ingestedRunCount={ingestedRunCount}
+          />
         ) : (
           messages.map((msg) =>
             msg.role === "user" ? (
@@ -621,7 +652,7 @@ export function AgentsPanel({
                       : "min-w-0 max-w-[min(100%,36rem)] rounded-2xl rounded-bl-md border border-zinc-200/90 bg-white px-4 py-3 shadow-sm ring-1 ring-zinc-100/80"
                   }
                 >
-                  {formatAssistantBody(msg.data, isDock)}
+                  {formatAssistantBody(msg.data, isDock, onNavigateToChunk)}
                   {Array.isArray(msg.data.suggested_followups) && msg.data.suggested_followups.length > 0 ? (
                     isDock ? (
                       <div className="mt-3 rounded-xl border border-emerald-200/80 bg-emerald-50/90 p-2.5">

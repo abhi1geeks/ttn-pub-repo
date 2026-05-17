@@ -11,6 +11,22 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  # One-shot: n8n runs as UID 1000; new named volumes are root-owned unless initialized.
+  artifacts-init:
+    image: busybox:1.36
+    user: root
+    volumes:
+      - regulatory_artifacts:/data/regulatory
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /data/regulatory/pdfs /data/regulatory/layout /data/regulatory/diff
+        chown -R 1000:1000 /data/regulatory
+        chmod -R u+rwX,g+rwX /data/regulatory
+    restart: "no"
+
   agents:
     build:
       context: ./agents_api
@@ -19,12 +35,15 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    env_file:
+      - ./.env
+    volumes:
+      - regulatory_artifacts:/data/regulatory
     environment:
+      - ARTIFACTS_ROOT=/data/regulatory
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      # Optional: set in project .env (never commit real values). boto3 uses these for Bedrock when AGENTS_STUB_LLM=0.
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      # AWS keys: from env_file (.env) only — do not interpolate ${AWS_*} here (host shell
+      # can inject a stale AWS_SESSION_TOKEN and break SigV4 for AKIA IAM user keys).
       - AGENTS_STUB_LLM=${AGENTS_STUB_LLM:-1}
       - BEDROCK_CHAT_MODEL_ID=${BEDROCK_CHAT_MODEL_ID:-amazon.nova-pro-v1:0}
 
@@ -34,6 +53,8 @@ services:
     restart: unless-stopped
     ports:
       - "5678:5678"
+    env_file:
+      - ./.env
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
@@ -46,16 +67,15 @@ services:
       # - NODE_FUNCTION_ALLOW_BUILTIN=https
       # Optional: To allow all built-in modules
       - NODE_FUNCTION_ALLOW_BUILTIN=* 
-      # Set in project-root .env (see .env.example). Required for Bedrock signing in the workflow.
-      - N8N_AWS_ACCESS_KEY_ID=${N8N_AWS_ACCESS_KEY_ID}
-      - N8N_AWS_SECRET_ACCESS_KEY=${N8N_AWS_SECRET_ACCESS_KEY}
-      # Optional: only for temporary STS/SSO/assumed-role credentials
-      - N8N_AWS_SESSION_TOKEN=${N8N_AWS_SESSION_TOKEN}
+      # AWS keys for Bedrock: env_file (.env) only — see agents service comment on SESSION_TOKEN.
+      - AWS_REGION=${AWS_REGION:-us-east-1}
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - ARTIFACTS_ROOT=/data/regulatory
       # Optional: Add an encryption key for your credentials
       # - N8N_ENCRYPTION_KEY=your_secret_key_here
     volumes:
       - n8n_data:/home/node/.n8n
+      - regulatory_artifacts:/data/regulatory
     depends_on:
       - qdrant
       - agents
@@ -79,6 +99,9 @@ services:
       - CHUNKS_COLLECTION=${CHUNKS_COLLECTION:-regulatory_docs}
       - WEB_PORT=8787
       - AGENTS_URL=http://agents:8000
+      - ARTIFACTS_ROOT=/data/regulatory
+    volumes:
+      - regulatory_artifacts:/data/regulatory
     depends_on:
       - qdrant
       - agents
@@ -86,3 +109,4 @@ services:
 volumes:
   n8n_data:
   qdrant_data:
+  regulatory_artifacts:

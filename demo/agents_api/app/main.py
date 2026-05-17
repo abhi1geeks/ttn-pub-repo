@@ -11,6 +11,9 @@ from fastapi.responses import JSONResponse
 
 from app.agents.agentic_workflow import run_agentic_workflow
 from app.agents.compare import run_compare_agent
+from app.agents.alert_triage import run_alert_triage
+from app.agents.cross_jurisdiction import run_cross_jurisdiction_compare
+from app.agents.gap_analysis import run_gap_analysis
 from app.agents.guardrails import (
     first_compare_agent_request_policy_violation,
     first_summary_input_policy_violation,
@@ -21,6 +24,7 @@ from app.agents.summary import run_summary_agent
 from app.agents.supervisor import classify_intent_async
 from app.pipelines.chat_triage import trivial_chat_reply
 from app.pipelines.retrieve_qna import retrieve_and_answer
+from app.ingest.process import aligned_changes_for_versions, diff_regions_for_versions, process_ingest_artifacts
 from app.schemas import (
     AgenticWorkflowRequest,
     AgenticWorkflowResponse,
@@ -28,9 +32,22 @@ from app.schemas import (
     ChatPipelineResponse,
     CompareAgentRequest,
     CompareAgentResponse,
+    AlertTriageRequest,
+    AlertTriageResponse,
+    CrossJurisdictionCompareRequest,
+    CrossJurisdictionCompareResponse,
+    GapAnalysisRequest,
+    GapAnalysisResponse,
     GuardrailsValidateRequest,
     GuardrailsValidateResponse,
     HealthResponse,
+    IngestAlignedChangesRequest,
+    IngestAlignedChangesResponse,
+    AlignedChangesSummary,
+    IngestDiffRegionsRequest,
+    IngestDiffRegionsResponse,
+    IngestProcessRequest,
+    IngestProcessResponse,
     OrchestrateRequest,
     OrchestrateResponse,
     QnAAgentRequest,
@@ -58,6 +75,62 @@ async def request_id_header(request: Request, call_next):
 async def health() -> HealthResponse:
     stub = os.environ.get("AGENTS_STUB_LLM", "1").lower() in ("1", "true", "yes")
     return HealthResponse(ok=True, stub_llm=stub)
+
+
+@app.post("/v1/ingest/process", response_model=IngestProcessResponse)
+async def ingest_process(body: IngestProcessRequest) -> IngestProcessResponse:
+    try:
+        out = process_ingest_artifacts(
+            document_url=body.document_url,
+            version_id=body.version_id,
+            pdf_rel_path=body.pdf_path,
+            url_hash=body.url_hash,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("ingest/process failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return IngestProcessResponse.model_validate(out)
+
+
+@app.post("/v1/ingest/diff-regions", response_model=IngestDiffRegionsResponse)
+async def ingest_diff_regions(body: IngestDiffRegionsRequest) -> IngestDiffRegionsResponse:
+    try:
+        out = diff_regions_for_versions(
+            document_url=body.document_url,
+            baseline_version_id=body.baseline_version_id,
+            current_version_id=body.current_version_id,
+            url_hash=body.url_hash,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("ingest/diff-regions failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return IngestDiffRegionsResponse.model_validate(out)
+
+
+@app.post("/v1/ingest/aligned-changes", response_model=IngestAlignedChangesResponse)
+async def ingest_aligned_changes(body: IngestAlignedChangesRequest) -> IngestAlignedChangesResponse:
+    try:
+        out = aligned_changes_for_versions(
+            document_url=body.document_url,
+            baseline_version_id=body.baseline_version_id,
+            current_version_id=body.current_version_id,
+            url_hash=body.url_hash,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("ingest/aligned-changes failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return IngestAlignedChangesResponse(
+        aligned_changes=out["alignedChanges"],
+        summary=AlignedChangesSummary.model_validate(out["summary"]),
+        baseline_version_id=out["baselineVersionId"],
+        current_version_id=out["currentVersionId"],
+    )
 
 
 @app.post("/v1/guardrails/validate", response_model=GuardrailsValidateResponse)
@@ -99,6 +172,49 @@ async def compare_route(body: CompareAgentRequest) -> CompareAgentResponse:
     if v is not None:
         raise HTTPException(status_code=400, detail={"error": "input_policy", "reason": v})
     return await run_compare_agent(body)
+
+
+@app.post("/v1/agents/cross-jurisdiction", response_model=CrossJurisdictionCompareResponse)
+async def cross_jurisdiction_route(body: CrossJurisdictionCompareRequest) -> CrossJurisdictionCompareResponse:
+    blob = f"{body.topic}\n" + "\n".join(f"{s.label}\n{s.content}" for s in body.snippets)
+    g_in = validate_guardrails(
+        GuardrailsValidateRequest(phase="input", text=blob[:16_000], require_chunk_citations=False)
+    )
+    if not g_in.allowed:
+        raise HTTPException(status_code=400, detail={"error": "input_policy", "reason": g_in.reason})
+    return await run_cross_jurisdiction_compare(body)
+
+
+@app.post("/v1/agents/alert-triage", response_model=AlertTriageResponse)
+async def alert_triage_route(body: AlertTriageRequest) -> AlertTriageResponse:
+    blob = "\n".join(
+        x
+        for x in (
+            body.executive_summary,
+            body.materiality_notes,
+            body.product_line,
+            body.jurisdiction,
+        )
+        if x
+    )
+    if blob.strip():
+        g_in = validate_guardrails(
+            GuardrailsValidateRequest(phase="input", text=blob[:16_000], require_chunk_citations=False)
+        )
+        if not g_in.allowed:
+            raise HTTPException(status_code=400, detail={"error": "input_policy", "reason": g_in.reason})
+    return await run_alert_triage(body)
+
+
+@app.post("/v1/agents/gap-analysis", response_model=GapAnalysisResponse)
+async def gap_analysis_route(body: GapAnalysisRequest) -> GapAnalysisResponse:
+    blob = f"{body.certification_profile}\n{body.regulatory_change_text}"
+    g_in = validate_guardrails(
+        GuardrailsValidateRequest(phase="input", text=blob[:16_000], require_chunk_citations=False)
+    )
+    if not g_in.allowed:
+        raise HTTPException(status_code=400, detail={"error": "input_policy", "reason": g_in.reason})
+    return await run_gap_analysis(body)
 
 
 @app.post("/v1/workflow/agentic", response_model=AgenticWorkflowResponse)

@@ -206,7 +206,7 @@ async def _run_agentic_workflow_legacy(body: AgenticWorkflowRequest) -> AgenticW
             body,
         )
 
-    canned = trivial_chat_reply(body.query)
+    canned = trivial_chat_reply(body.query, user_display_name=body.user_display_name)
     if canned is not None:
         if trace is not None:
             trace["branch"] = "conversational_short_circuit"

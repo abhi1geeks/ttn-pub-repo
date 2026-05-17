@@ -55,9 +55,34 @@ def test_trivial_chat_reply_not_triggered(msg: str) -> None:
 def test_trivial_chat_capability_meta_skips_rag(msg: str) -> None:
     out = trivial_chat_reply(msg)
     assert out is not None
-    assert "[chunk" in out.lower() or "chunk:" in out.lower()
-    assert "indexed document" in out.lower()
+    assert "reggpt" in out.lower()
+    assert "citation" in out.lower() or "indexed" in out.lower()
 
 
-def test_trivial_chat_capability_not_used_when_reg_topic_present() -> None:
-    assert trivial_chat_reply("What kind of help can you give about section 4.2?") is None
+def test_trivial_chat_plain_hi_uses_reggpt_voice() -> None:
+    out = trivial_chat_reply("Hi")
+    assert out is not None
+    assert "RegGPT" in out
+    assert "[chunk" not in out
+
+
+def test_trivial_chat_hi_with_session_display_name() -> None:
+    out = trivial_chat_reply("Hi", user_display_name="demo")
+    assert out is not None
+    assert "Demo" in out
+    assert "RegGPT" in out
+
+
+def test_trivial_chat_self_introduction() -> None:
+    out = trivial_chat_reply("Hi, I am Joy")
+    assert out is not None
+    assert "Joy" in out
+    assert "Hi" in out
+
+
+def test_trivial_chat_self_introduction_multipart_name() -> None:
+    out = trivial_chat_reply("hello i'm mary jane")
+    assert out is not None
+    assert "Mary Jane" in out
+
+

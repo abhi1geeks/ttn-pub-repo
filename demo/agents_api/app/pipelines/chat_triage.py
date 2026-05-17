@@ -44,6 +44,28 @@ _SUBSTANTIVE = re.compile(
 )
 
 
+def _clean_display_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    t = " ".join(name.strip().split())
+    if not t or len(t) > 64:
+        return None
+    return t
+
+
+def _greeting_reply(name: str | None = None) -> str:
+    """Warm opener for hi/hello — no chunk-syntax jargon."""
+    if name:
+        return (
+            f"Hi, {name} — I'm RegGPT. Ask me anything about the document you have open "
+            "(for example an obligation, deadline, or definition). I'll answer from indexed excerpts with citations."
+        )
+    return (
+        "Hi — I'm RegGPT. Ask me anything about the document you have open "
+        "(for example an obligation, deadline, or definition). I'll answer from indexed excerpts with citations."
+    )
+
+
 def _assistant_capability_reply(message: str) -> str | None:
     """Short, honest capability text for meta questions—no RAG, no chunk citations."""
     raw = message.strip()
@@ -54,19 +76,19 @@ def _assistant_capability_reply(message: str) -> str | None:
     if not _ASSISTANT_CAPABILITY.search(raw):
         return None
     return (
-        "For substantive questions about the indexed document (obligations, definitions, sections, deadlines, "
-        "etc.), I retrieve short excerpts and answer with explicit [chunk:N] citations so each claim is tied to "
-        "source text. When you attach compare or ingest-summary context, the workflow can also route to compare "
-        "or summary style answers. I do not provide legal advice or invent obligations that are not supported "
-        "by the excerpts you scope. Ask a concrete question about the document when you want a grounded answer."
+        "I'm RegGPT — a regulatory Q&A assistant for the document scoped in this workspace. "
+        "For substantive questions I retrieve short excerpts from your indexed runs and answer with citations "
+        "to source text. With compare or ingest-summary context attached, I can also help with change narratives. "
+        "I don't provide legal advice. Ask a concrete question when you're ready."
     )
 
 
-def trivial_chat_reply(message: str) -> str | None:
+def trivial_chat_reply(message: str, *, user_display_name: str | None = None) -> str | None:
     """Return a short canned reply to skip RAG, or None when the message should go to QnA."""
     raw = message.strip()
     if not raw:
         return None
+    session_name = _clean_display_name(user_display_name)
     cap = _assistant_capability_reply(raw)
     if cap is not None:
         return cap
@@ -85,13 +107,13 @@ def trivial_chat_reply(message: str) -> str | None:
     thanks = re.match(r"^(thanks|thank\s+you|thx|ty|much\s+appreciated)\b", n)
     if thanks:
         return (
-            "You are welcome. When you are ready, ask a specific question about the indexed document "
-            "and I will answer from retrieved excerpts with citations."
+            "You're welcome. When you're ready, ask a specific question about the indexed document "
+            "and I'll answer from retrieved excerpts with citations."
         )
 
     bye = re.match(r"^(bye|goodbye|cya|see\s+you|see\s+ya|later)\b", n)
     if bye:
-        return "Goodbye. You can return anytime to ask about this document."
+        return "Goodbye — you can return anytime to ask about this document."
 
     ack = re.match(r"^(ok|okay|sure|got\s+it|alright|sounds\s+good|roger|copy\s+that)\b", n)
     if ack and len(n) < 48:
@@ -100,14 +122,23 @@ def trivial_chat_reply(message: str) -> str | None:
             "send it here."
         )
 
+    intro = re.match(
+        r"^(hi|hello|hey|howdy|hiya|greetings|gm|good\s+morning|good\s+afternoon|good\s+evening)\b[,.\s]+"
+        r"(i\s+am|i'?m|my\s+name\s+is)\s+"
+        r"([a-z][a-z'-]*(?:\s+[a-z][a-z'-]*){0,2})\s*$",
+        n,
+    )
+    if intro and len(n) < 96:
+        raw_name = intro.group(3).strip()
+        if 1 < len(raw_name) <= 48 and re.fullmatch(r"[a-z][a-z'-]*(?:\s+[a-z][a-z'-]*)*", raw_name):
+            name = " ".join(part.capitalize() for part in raw_name.split())
+            return _greeting_reply(name)
+
     greet = re.match(
         r"^(hi|hello|hey|howdy|hiya|greetings|gm|good\s+morning|good\s+afternoon|good\s+evening)\b",
         n,
     )
     if greet and len(n) < 72:
-        return (
-            "Hello. Ask a specific question about the indexed document (for example a section, definition, "
-            "or obligation), and I will answer from retrieved excerpts using [chunk:N] citations."
-        )
+        return _greeting_reply(session_name)
 
     return None

@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { fmtTs } from "../../lib/format";
 import type { RunSummary } from "../../lib/uc1";
+import { pdfUrlForRun } from "../../lib/pdf_artifacts";
 import { shortHash } from "../../lib/uc1";
 
 export const selectClass =
   "uc1-select w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 shadow-sm outline-none transition placeholder:text-zinc-400 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-500/15";
 
-export function Uc1Hero({ rightSlot }: { rightSlot?: ReactNode }) {
+export function Uc1Hero({ rightSlot, bottomNav }: { rightSlot?: ReactNode; bottomNav?: ReactNode }) {
   return (
     <div className="relative overflow-hidden border-b border-emerald-900/10 bg-gradient-to-br from-emerald-950 via-zinc-900 to-zinc-950 text-white">
       <div
@@ -17,7 +18,7 @@ export function Uc1Hero({ rightSlot }: { rightSlot?: ReactNode }) {
       />
       <div className="relative mx-auto flex max-w-[1600px] flex-col gap-6 px-6 py-10 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300/90">Use case UC1</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300/90">GLI regulatory intelligence</p>
           <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight sm:text-4xl">
             Regulatory change monitor
           </h1>
@@ -28,6 +29,9 @@ export function Uc1Hero({ rightSlot }: { rightSlot?: ReactNode }) {
         </div>
         {rightSlot ? <div className="shrink-0 lg:pt-1">{rightSlot}</div> : null}
       </div>
+      {bottomNav ? (
+        <div className="relative border-t border-white/10 bg-black/20 px-6 py-3 backdrop-blur-sm">{bottomNav}</div>
+      ) : null}
     </div>
   );
 }
@@ -37,11 +41,14 @@ export function SourceIdentityCard({
   runCount,
   onCompareLatest,
   canCompareLatest,
+  actionsSlot,
 }: {
   url: string;
   runCount: number;
   onCompareLatest: () => void;
   canCompareLatest: boolean;
+  /** CSV 1.4 export actions, etc. */
+  actionsSlot?: ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm ring-1 ring-zinc-100">
@@ -76,6 +83,9 @@ export function SourceIdentityCard({
           </button>
         ) : null}
       </div>
+      {actionsSlot ? (
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-zinc-100 pt-4">{actionsSlot}</div>
+      ) : null}
     </div>
   );
 }
@@ -84,9 +94,11 @@ type RunLike = {
   timestamp?: string;
   versionId?: string;
   documentHash?: string;
+  documentUrl?: string;
   summary?: RunSummary;
   pdfPageCount?: number;
   pdfPageCountSource?: string;
+  pdfArtifact?: { path?: string };
   sourceIngest?: {
     httpStatus?: number | null;
     fetchedAt?: string | null;
@@ -106,16 +118,18 @@ export function RunDigestGrid({
   current,
   baselineLabel,
   currentLabel,
+  documentUrl,
 }: {
   baseline?: RunLike;
   current?: RunLike;
   baselineLabel: string;
   currentLabel: string;
+  documentUrl?: string;
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <RunDigestCard title={baselineLabel} variant="muted" run={baseline} />
-      <RunDigestCard title={currentLabel} variant="accent" run={current} />
+      <RunDigestCard title={baselineLabel} variant="muted" run={baseline} documentUrl={documentUrl} />
+      <RunDigestCard title={currentLabel} variant="accent" run={current} documentUrl={documentUrl} />
     </div>
   );
 }
@@ -124,10 +138,12 @@ function RunDigestCard({
   title,
   run,
   variant,
+  documentUrl,
 }: {
   title: string;
   run?: RunLike;
   variant: "muted" | "accent";
+  documentUrl?: string;
 }) {
   const ring = variant === "accent" ? "ring-emerald-500/20" : "ring-zinc-100";
   const bar = variant === "accent" ? "bg-emerald-500" : "bg-zinc-300";
@@ -162,6 +178,21 @@ function RunDigestCard({
                 {run.pdfPageCountSource ? (
                   <span className="ml-1 text-zinc-500">({run.pdfPageCountSource})</span>
                 ) : null}
+              </dd>
+            </div>
+          ) : null}
+          {run.pdfArtifact?.path && documentUrl && run.versionId ? (
+            <div className="flex justify-between gap-2">
+              <dt className="text-zinc-500">Stored PDF</dt>
+              <dd>
+                <a
+                  href={pdfUrlForRun(documentUrl, String(run.versionId))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-violet-700 hover:underline"
+                >
+                  Open PDF
+                </a>
               </dd>
             </div>
           ) : null}
@@ -215,16 +246,22 @@ export function ImpactSummaryCard({
   stub,
   modelId,
   agentsAvailable,
+  impactOutputLanguage,
+  onImpactOutputLanguageChange,
   onGenerateImpact,
   generatingImpact,
   impactError,
+  persistenceMode = "none",
 }: {
   executiveSummary?: string;
   materialityNotes?: string;
   materialityScore?: number | null;
   stub?: boolean;
   modelId?: string;
+  persistenceMode?: "run" | "session" | "none";
   agentsAvailable?: boolean;
+  impactOutputLanguage?: "en" | "es" | "de" | "fr";
+  onImpactOutputLanguageChange?: (lang: "en" | "es" | "de" | "fr") => void;
   onGenerateImpact?: () => void;
   generatingImpact?: boolean;
   impactError?: string | null;
@@ -242,11 +279,29 @@ export function ImpactSummaryCard({
           ? "Medium"
           : "Elevated";
 
+  const looksLikeStubPlaceholder =
+    stub || Boolean(executiveSummary?.includes("[stub-llm]")) || Boolean(materialityNotes?.includes("[stub-llm]"));
+
   return (
     <div className="relative z-0 overflow-hidden rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/80 p-5 shadow-sm ring-1 ring-zinc-100/80">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h2 className="text-sm font-semibold text-zinc-900">Impact summary (UC1-005)</h2>
+        <h2 className="text-sm font-semibold text-zinc-900">Impact summary</h2>
         <div className="flex flex-wrap items-center gap-2">
+          {persistenceMode === "run" ? (
+            <span
+              className="rounded-md bg-sky-100/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900"
+              title="Stored with this ingest run in the backend."
+            >
+              Saved on run
+            </span>
+          ) : persistenceMode === "session" ? (
+            <span
+              className="rounded-md bg-violet-100/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-900"
+              title="Visible for this browser session until you leave or refresh."
+            >
+              Session only
+            </span>
+          ) : null}
           {materialityScore != null ? (
             <span
               className="rounded-md bg-emerald-100/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900"
@@ -261,7 +316,7 @@ export function ImpactSummaryCard({
             </span>
           ) : null}
           <span className="rounded-md bg-zinc-200/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
-            POC
+            Demo
           </span>
           <button
             type="button"
@@ -273,6 +328,35 @@ export function ImpactSummaryCard({
           </button>
         </div>
       </div>
+
+      {looksLikeStubPlaceholder && agentsAvailable ? (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950">
+          This text is a <strong>placeholder</strong>, not a live Bedrock narrative. After{" "}
+          <code className="rounded bg-white/80 px-1 font-mono text-[10px]">demo/.env</code> has AWS keys and{" "}
+          <code className="rounded bg-white/80 px-1 font-mono text-[10px]">AGENTS_STUB_LLM=0</code>, run{" "}
+          <code className="rounded bg-white/80 px-1 font-mono text-[10px]">./scripts/up.sh --quick</code>, then click{" "}
+          <strong>Regenerate impact summary</strong> below (or re-ingest to refresh the saved run payload).
+        </p>
+      ) : null}
+
+      {agentsAvailable && impactOutputLanguage != null && onImpactOutputLanguageChange ? (
+        <div className="mt-3 rounded-lg border border-zinc-200/90 bg-white/60 px-3 py-2">
+          <label className="block text-[11px] font-medium text-zinc-600">
+            Summary language
+            <select
+              className={`${selectClass} mt-1 w-full max-w-xs`}
+              value={impactOutputLanguage}
+              onChange={(e) => onImpactOutputLanguageChange(e.target.value as "en" | "es" | "de" | "fr")}
+              disabled={Boolean(generatingImpact)}
+            >
+              <option value="en">English</option>
+              <option value="es">Español</option>
+              <option value="de">Deutsch</option>
+              <option value="fr">Français</option>
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       {expanded ? (
         <>
@@ -323,7 +407,8 @@ export function ImpactSummaryCard({
               <p className="mt-2 text-[11px] text-zinc-500">
                 Calls{" "}
                 <code className="rounded bg-white/80 px-1 font-mono text-[10px]">POST /api/agents/v1/agents/summary</code>{" "}
-                using this run&apos;s chunk delta previews (session-only until you persist via n8n).
+                using this run&apos;s chunk delta previews and the selected output language (session-only until you
+                persist via n8n).
               </p>
             </div>
           ) : (
@@ -396,7 +481,7 @@ export function HitlReviewBar({
     <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm ring-1 ring-amber-500/10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-900">Reviewer checkpoint (UC1-006)</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">Reviewer checkpoint</h2>
           <p className="mt-0.5 text-xs text-zinc-500">
             When a run id is available, your choice is written to the <strong>run record in Qdrant</strong> (shared,
             survives refresh). Otherwise this browser keeps a session fallback. No SharePoint or email is sent.

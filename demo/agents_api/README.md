@@ -9,6 +9,9 @@ FastAPI service implementing **Supervisor**, **SummaryAgent**, **QnAAgent**, **C
 | GET | `/health` | Liveness |
 | POST | `/v1/guardrails/validate` | Input/output policy checks |
 | POST | `/v1/orchestrate` | Auto intent from `user_message` (Bedrock JSON when `AGENTS_STUB_LLM=0` and `SUPERVISOR_USE_LLM` not `rules`, else keyword rules) → `qna` / `summary` / `compare` / `blocked` |
+| POST | `/v1/agents/alert-triage` | CSV 1.3 — relevance tier, routing queue, tags, rationale from ingest context |
+| POST | `/v1/agents/cross-jurisdiction` | Compare regulatory posture across jurisdictions (demo) |
+| POST | `/v1/agents/gap-analysis` | Gap analysis vs a target framework (demo) |
 | POST | `/v1/agents/summary` | UC1-005 ingest summary from chunk delta |
 | POST | `/v1/agents/qna` | UC2-002 answer over provided chunks (caller retrieves) |
 | POST | `/v1/agents/compare` | UC1-004 short narrative compare |
@@ -16,6 +19,8 @@ FastAPI service implementing **Supervisor**, **SummaryAgent**, **QnAAgent**, **C
 | POST | `/v1/pipelines/chat` | Hosted n8n chat: guardrails → supervisor route → (unless `force_qna`) compare/summary short reply → else Qdrant scroll → rank → QnA → citations |
 
 Optional body field **`force_qna`** (default `false`): when `true`, skips the compare/summary keyword short-circuit and always runs retrieve → QnA (useful for the web Agents tab demos).
+
+**SummaryAgent** (`POST /v1/agents/summary`): optional **`target_language`** / **`targetLanguage`** — one of `en`, `es`, `de`, `fr` (default `en`). The model prompt asks for the executive and materiality paragraphs in that language; stub mode returns short localized placeholder text.
 
 **Agentic workflow** (`POST /v1/workflow/agentic`): if the supervisor picks **compare** or **summary** but `compare_context` / `summary_context` is missing and **`document_url`** is set, the service **falls back to QnA** (retrieve → answer) and sets **`fallback_from`** to `compare` or `summary` while keeping **`supervisor_route`** as the original branch. If the supervisor returns **`blocked`** but **`document_url`** is set (and the message is not empty), the workflow **still runs QnA** with **`fallback_from`:** `blocked` (LLM “ambiguous” blocks are overridden in `classify_intent` by keyword rules when possible).
 

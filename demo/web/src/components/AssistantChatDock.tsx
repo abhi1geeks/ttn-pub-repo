@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { classifyDocumentScope, reggptScopeBadgeClass, reggptScopeShortLabel } from "../lib/reggpt_scope";
 import { AgentsPanel } from "./AgentsPanel";
 import { ChatBotAvatar, ChatBotGlyph } from "./chat/ChatRoleAvatars";
 
@@ -21,9 +22,13 @@ const MAX_HEIGHT_CAP_PX = 900;
 
 type Props = {
   documentUrl: string;
+  sessionUser?: string | null;
+  ingestedRunCount?: number;
   compareBaselineText?: string;
   compareCurrentText?: string;
   compareChunkChanges?: { kind: "added" | "removed"; chunk_index: number | null; excerpt: string }[];
+  onNavigateToChunk?: (chunkIndex: number) => void;
+  reggptHint?: string;
 };
 
 type DockSize = { w: number; h: number };
@@ -100,9 +105,13 @@ function ResizeGripIcon() {
 
 export function AssistantChatDock({
   documentUrl,
+  sessionUser = null,
+  ingestedRunCount = 0,
   compareBaselineText = "",
   compareCurrentText = "",
   compareChunkChanges = [],
+  onNavigateToChunk,
+  reggptHint,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [size, setSize] = useState<DockSize>(() => ({
@@ -111,6 +120,7 @@ export function AssistantChatDock({
   }));
 
   const close = useCallback(() => setOpen(false), []);
+  const scopeKind = useMemo(() => classifyDocumentScope(documentUrl), [documentUrl]);
 
   /** Hydrate from localStorage and clamp to current viewport (client-only). */
   useEffect(() => {
@@ -216,12 +226,12 @@ export function AssistantChatDock({
             style={{ width: size.w, height: size.h }}
             className="pointer-events-auto relative z-[1] max-w-[calc(100vw-1.25rem)] flex flex-col overflow-hidden rounded-2xl border border-zinc-200/90 bg-white shadow-2xl shadow-zinc-900/20 ring-1 ring-zinc-900/5"
             role="dialog"
+            aria-modal="true"
             aria-label="Regulatory assistant chat"
           >
             {/* Top-left drag resize (panel grows toward top-left; bottom-right stays aligned to stack). */}
             <div
               role="separator"
-              aria-orientation="both"
               aria-label="Resize assistant panel"
               title="Drag to resize · double-click to reset size"
               onPointerDown={onResizePointerDown}
@@ -241,13 +251,23 @@ export function AssistantChatDock({
             <header className="flex shrink-0 items-center gap-2.5 border-b border-emerald-900/10 bg-gradient-to-r from-emerald-950 to-zinc-900 pl-12 pr-3 py-3 text-white">
               <ChatBotAvatar size="sm" />
               <div className="min-w-0 flex-1">
-                <h2 className="text-[15px] font-semibold tracking-tight">Assistant</h2>
-                <p
-                  className="line-clamp-2 break-all font-mono text-[11px] leading-snug text-emerald-100/95"
-                  title={documentUrl}
-                >
-                  {documentUrl}
-                </p>
+                <h2 className="text-[15px] font-semibold tracking-tight">RegGPT</h2>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-[10px] font-medium ring-1 ${reggptScopeBadgeClass(scopeKind)}`}
+                  >
+                    {reggptScopeShortLabel(scopeKind)}
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${
+                      ingestedRunCount > 0 ? "bg-emerald-500/30 text-emerald-50" : "bg-amber-500/30 text-amber-50"
+                    }`}
+                  >
+                    {ingestedRunCount > 0
+                      ? `${ingestedRunCount} indexed run${ingestedRunCount === 1 ? "" : "s"}`
+                      : "Not indexed yet"}
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
@@ -258,12 +278,20 @@ export function AssistantChatDock({
               </button>
             </header>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-1">
+              {reggptHint ? (
+                <p className="mb-2 rounded-lg border border-amber-200/90 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-950">
+                  {reggptHint}
+                </p>
+              ) : null}
               <AgentsPanel
                 variant="dock"
                 documentUrl={documentUrl}
+                sessionUser={sessionUser}
+                ingestedRunCount={ingestedRunCount}
                 compareBaselineText={compareBaselineText}
                 compareCurrentText={compareCurrentText}
                 compareChunkChanges={compareChunkChanges}
+                onNavigateToChunk={onNavigateToChunk}
               />
             </div>
           </section>

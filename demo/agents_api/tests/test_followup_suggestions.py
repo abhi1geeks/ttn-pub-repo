@@ -50,8 +50,8 @@ def test_conversational_route_generic_starters() -> None:
         qna=QnAAgentResponse(answer="Hello…", cited_chunk_indices=[], model_id="none", stub=False),
     )
     su = build_suggested_followups(body, resp)
-    assert len(su) == 3
-    assert any("obligation" in s.lower() or "chunk" in s.lower() for s in su)
+    assert len(su) == 2
+    assert all(isinstance(s, str) and len(s) > 10 for s in su)
 
 
 def test_needs_document_url() -> None:

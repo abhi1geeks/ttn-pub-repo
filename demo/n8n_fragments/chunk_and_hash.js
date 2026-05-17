@@ -15,6 +15,7 @@ const text = rawText
   .trim();
 
 const cfg = $('Set Config').first().json;
+const savedPdf = $('Code: Save PDF Artifact').first().json || {};
 const prov = $('Code: Ingest Provenance').first().json || {};
 const documentUrl = cfg.documentUrl;
 const chunkSize = cfg.chunkSize || 1500;
@@ -47,7 +48,7 @@ function splitText(t, size, overlap) {
 }
 
 const chunks = splitText(text, chunkSize, chunkOverlap);
-const versionId = new Date().toISOString();
+const versionId = savedPdf.versionId || new Date().toISOString();
 const documentHash = crypto.createHash('sha256').update(text).digest('hex');
 
 const pdfParts = rawText.split('\f');
@@ -107,6 +108,10 @@ return chunks.map((chunkText, index) => {
       ingestError: prov.ingestError ?? null,
     },
   };
-  if (index === 0) out.json.fullText = text;
+  if (index === 0) {
+    out.json.fullText = text;
+    if (savedPdf.pdfArtifact) out.json.pdfArtifact = savedPdf.pdfArtifact;
+    if (savedPdf.urlHash) out.json.urlHash = savedPdf.urlHash;
+  }
   return out;
 });

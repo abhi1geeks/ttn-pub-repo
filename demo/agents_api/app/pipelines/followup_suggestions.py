@@ -137,12 +137,11 @@ def build_suggested_followups(body: AgenticWorkflowRequest, resp: AgenticWorkflo
         if route == "conversational":
             out.extend(
                 [
-                    "What obligation or deadline in the indexed document applies to my situation?",
-                    "Which section or keyword should we look up first, with citations to supporting chunks?",
-                    "What definitions in the document govern how a key term is applied?",
+                    "What are the main obligations or deadlines in this document?",
+                    "Which sections define the key terms?",
                 ]
             )
-            return _dedupe_preserve(out, max_n=3)
+            return _dedupe_preserve(out, max_n=2)
 
         cited = list(resp.qna.cited_chunk_indices or [])
         if cited:

@@ -1,17 +1,27 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  AlertScoringBand,
+  AutomatedChangeDetectionStrip,
+  IngestCadenceCallout,
+  RunEvidenceExportButton,
+} from "./components/uc1/GliCsvExtensions";
 import { AssistantChatDock } from "./components/AssistantChatDock";
+import { GliIntelligenceHub } from "./components/GliIntelligenceHub";
 import { LoginGate } from "./components/LoginGate";
 import { PageWiseReadableDiff, UnifiedDiffView, DiffLineLegendFilter } from "./components/DiffViews";
+import { PdfPageDiffViewer } from "./features/ingest/PdfPageDiffViewer";
+import { SectionAlignedDiff } from "./features/ingest/SectionAlignedDiff";
+import { type ChangeRegion, type PdfArtifact } from "./lib/pdf_artifacts";
 import {
   HitlReviewBar,
   ImpactSummaryCard,
   RunDigestGrid,
   SourceIdentityCard,
-  Uc1Hero,
   selectClass,
   type HitlStatus,
 } from "./components/uc1/Uc1Panels";
+import { VersionHistoryPanel } from "./components/uc1/VersionHistoryPanel";
 import {
   buildPageWiseLineDiff,
   buildUnifiedDiffLines,
@@ -21,6 +31,39 @@ import {
 } from "./lib/diff";
 import { fmtTs } from "./lib/format";
 import { hitlStorageKey, clampHitlReason, parseHitlReview, type HitlReviewPayload } from "./lib/uc1";
+import { runToEvidenceSlice } from "./lib/run_evidence_export";
+import { CUSTOM_SOURCES_CHANGED, customSourceDocumentUrls } from "./lib/custom_sources";
+import { CATALOG_DOCUMENT_URLS, DEMO_CANONICAL_PDF } from "./data/sources_catalog";
+import { documentUrlsMatch, expandDocumentUrlAliases, normalizeDocumentUrl } from "./lib/document_url";
+import { requestCrossPrefillFromIngest } from "./lib/cross_prefill";
+import { saveGapPrefillRegulatoryText } from "./lib/gap_prefill";
+import {
+  clearIngestFeatureFocus,
+  INGEST_FEATURE_SECTION_ID,
+  loadIngestFeatureFocus,
+  saveIngestFeatureFocus,
+  type IngestFeatureFocusId,
+} from "./lib/ingest_feature_focus";
+import {
+  loadPersistedAppSurface,
+  loadPersistedDocumentUrl,
+  savePersistedAppSurface,
+  savePersistedDocumentUrl,
+  type AppSurface,
+} from "./lib/workspace_persist";
+import {
+  readAppRouteFromLocation,
+  subscribeAppRoute,
+  writeAppRouteToLocation,
+  type IngestTabId,
+} from "./lib/app_route";
+import { NAVIGATE_TO_CHUNK_EVENT, chunkElementId, highlightChunkElement } from "./lib/chunk_navigation";
+import { buildSourceHealthFromRuns } from "./lib/source_health";
+import { AppShell } from "./components/app/AppShell";
+import { IngestContextBar } from "./features/ingest/IngestContextBar";
+import { IngestWorkspace } from "./features/ingest/IngestWorkspace";
+
+type ImpactOutputLang = "en" | "es" | "de" | "fr";
 
 type Run = {
   documentUrl?: string;
@@ -42,6 +85,11 @@ type Run = {
   /** When the ingest pipeline stamps it (optional); not the same as logical diff pages. */
   pdfPageCount?: number;
   pdfPageCountSource?: string;
+  pdfArtifact?: PdfArtifact;
+  layoutArtifact?: { path: string; pageCount?: number };
+  changeRegions?: ChangeRegion[];
+  diffBaselineVersionId?: string;
+  urlHash?: string;
   /** XC-004: last HTTP fetch + headers snapshot at ingest (from n8n). */
   sourceIngest?: {
     httpStatus?: number | null;
@@ -112,16 +160,24 @@ function currentRunStorageKey(run: Run | undefined): string {
 }
 
 export default function App() {
-  const [tab, setTab] = useState("doc");
+  const initialRoute = typeof window !== "undefined" ? readAppRouteFromLocation() : null;
+  const [tab, setTab] = useState<IngestTabId>(() => initialRoute?.tab ?? "doc");
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [runsError, setRunsError] = useState<string | null>(null);
   const [loadingRuns, setLoadingRuns] = useState(true);
 
-  const [selectedUrl, setSelectedUrl] = useState<string>("");
+  const [selectedUrl, setSelectedUrl] = useState<string>(
+    () => initialRoute?.documentUrl || loadPersistedDocumentUrl() || "",
+  );
+  const [appSurface, setAppSurface] = useState<AppSurface>(
+    () => initialRoute?.surface ?? loadPersistedAppSurface() ?? "gli_hub",
+  );
   const [currentIdx, setCurrentIdx] = useState(0);
   const [baselineIdx, setBaselineIdx] = useState(1);
 
   const [viewMode, setViewMode] = useState<"side" | "unified">("side");
+  const [diffPresentation, setDiffPresentation] = useState<"text" | "pdf" | "section">("text");
+  const [pdfInitialPage, setPdfInitialPage] = useState<number | undefined>(undefined);
   const [contextSize, setContextSize] = useState(2);
   const [diffLineFilter, setDiffLineFilter] = useState<DiffLineFilter>(DEFAULT_DIFF_LINE_FILTER);
   /** When fullText has no \\f, split each side into this many lines per “logical page” (0 = off). */
@@ -142,6 +198,8 @@ export default function App() {
   const [impactSessionByVersion, setImpactSessionByVersion] = useState<Record<string, ImpactSessionOverride>>({});
   const [impactGenerating, setImpactGenerating] = useState(false);
   const [impactError, setImpactError] = useState<string | null>(null);
+  const [impactOutputLang, setImpactOutputLang] = useState<ImpactOutputLang>("en");
+  const [customSourcesRev, setCustomSourcesRev] = useState(0);
 
   useEffect(() => {
     void (async () => {
@@ -161,10 +219,6 @@ export default function App() {
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (tab === "agents") setTab("doc");
-  }, [tab]);
 
   const loadRuns = useCallback(async () => {
     setLoadingRuns(true);
@@ -198,23 +252,85 @@ export default function App() {
     setLoadingRuns(false);
   }, []);
 
+  useEffect(() => {
+    const onCustomSources = () => setCustomSourcesRev((n) => n + 1);
+    window.addEventListener(CUSTOM_SOURCES_CHANGED, onCustomSources);
+    return () => window.removeEventListener(CUSTOM_SOURCES_CHANGED, onCustomSources);
+  }, []);
+
   const docUrls = useMemo(() => {
-    if (!runs) return [];
     const s = new Set<string>();
-    for (const r of runs) {
-      const u = r.documentUrl;
-      if (u) s.add(u);
+    for (const u of CATALOG_DOCUMENT_URLS) {
+      for (const alias of expandDocumentUrlAliases(u)) s.add(alias);
     }
-    return [...s].sort();
-  }, [runs]);
+    for (const u of customSourceDocumentUrls()) s.add(u);
+    for (const r of runs ?? []) {
+      const u = r.documentUrl;
+      if (u) {
+        s.add(u);
+        for (const alias of expandDocumentUrlAliases(u)) s.add(alias);
+      }
+    }
+    // Prefer the n8n-aligned canonical URL in the picker when both alias forms exist.
+    const canonical = normalizeDocumentUrl(DEMO_CANONICAL_PDF);
+    const list = [...s].sort();
+    if (list.some((u) => normalizeDocumentUrl(u) === canonical)) {
+      const rest = list.filter((u) => normalizeDocumentUrl(u) !== canonical);
+      return [DEMO_CANONICAL_PDF, ...rest.filter((u) => u !== DEMO_CANONICAL_PDF)];
+    }
+    return list;
+  }, [runs, customSourcesRev]);
 
   useEffect(() => {
-    if (!selectedUrl && docUrls.length) setSelectedUrl(docUrls[0]!);
+    if (!docUrls.length) return;
+    if (selectedUrl && docUrls.some((u) => documentUrlsMatch(u, selectedUrl))) return;
+    const persisted = loadPersistedDocumentUrl();
+    const preferred =
+      (persisted && docUrls.find((u) => documentUrlsMatch(u, persisted))) ||
+      docUrls.find((u) => documentUrlsMatch(u, DEMO_CANONICAL_PDF)) ||
+      docUrls[0]!;
+    setSelectedUrl(preferred);
   }, [docUrls, selectedUrl]);
+
+  useEffect(() => {
+    if (selectedUrl) savePersistedDocumentUrl(selectedUrl);
+  }, [selectedUrl]);
+
+  useEffect(() => {
+    savePersistedAppSurface(appSurface);
+  }, [appSurface]);
+
+  useEffect(() => {
+    writeAppRouteToLocation(
+      { surface: appSurface, documentUrl: selectedUrl, tab, focus: null },
+      true,
+    );
+  }, [appSurface, selectedUrl, tab]);
+
+  useEffect(() => subscribeAppRoute(() => {
+    const route = readAppRouteFromLocation();
+    setAppSurface(route.surface);
+    if (route.documentUrl) setSelectedUrl(route.documentUrl);
+    setTab(route.tab);
+  }), []);
+
+  const navigateToChunk = useCallback((chunkIndex: number) => {
+    setTab("now");
+    window.setTimeout(() => highlightChunkElement(chunkIndex), 120);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ chunkIndex: number }>).detail;
+      if (detail?.chunkIndex != null) navigateToChunk(detail.chunkIndex);
+    };
+    window.addEventListener(NAVIGATE_TO_CHUNK_EVENT, handler);
+    return () => window.removeEventListener(NAVIGATE_TO_CHUNK_EVENT, handler);
+  }, [navigateToChunk]);
 
   const runsForDoc = useMemo(() => {
     if (!runs || !selectedUrl) return [];
-    return runs.filter((r) => r.documentUrl === selectedUrl);
+    return runs.filter((r) => r.documentUrl && documentUrlsMatch(r.documentUrl, selectedUrl));
   }, [runs, selectedUrl]);
 
   useEffect(() => {
@@ -226,6 +342,25 @@ export default function App() {
   const currentRun = runsForDoc[currentIdx];
   const baselineRun =
     baselineIdx !== currentIdx && runsForDoc.length ? runsForDoc[baselineIdx] : undefined;
+
+  const canShowPdfDiff = Boolean(
+    baselineRun?.pdfArtifact?.path &&
+      currentRun?.pdfArtifact?.path &&
+      baselineRun.versionId &&
+      currentRun.versionId,
+  );
+
+  const canShowSectionAlign = Boolean(
+    (baselineRun?.layoutArtifact?.path || baselineRun?.pdfArtifact?.path) &&
+      (currentRun?.layoutArtifact?.path || currentRun?.pdfArtifact?.path) &&
+      baselineRun?.versionId &&
+      currentRun?.versionId,
+  );
+
+  const pdfChangeRegions = useMemo((): ChangeRegion[] => {
+    if (!currentRun?.changeRegions?.length) return [];
+    return currentRun.changeRegions;
+  }, [currentRun?.changeRegions]);
 
   const hitlKey = useMemo(() => {
     if (!selectedUrl || !currentRun) return null;
@@ -429,22 +564,59 @@ export default function App() {
   }, [liveChunks]);
 
   const impactVersionKey = currentRun ? currentRunStorageKey(currentRun) : "";
-  const impactSession = impactVersionKey ? impactSessionByVersion[impactVersionKey] : undefined;
+  const impactSessionStorageKey =
+    impactVersionKey && impactOutputLang ? `${impactVersionKey}::${impactOutputLang}` : "";
+  const impactSession = impactSessionStorageKey ? impactSessionByVersion[impactSessionStorageKey] : undefined;
 
   const impactExecutive = impactSession?.llmSummary ?? currentRun?.llmSummary;
   const impactMateriality = impactSession?.materialityNotes ?? currentRun?.materialityNotes;
   const impactScore = impactSession?.materialityScore ?? currentRun?.materialityScore;
   const impactStubBadge = impactSession?.stub === true;
   const impactModelId = impactSession?.agentsModelId ?? currentRun?.agentsModelId;
+  const impactPersistenceMode: "run" | "session" | "none" = impactSession
+    ? "session"
+    : currentRun?.llmSummary?.trim()
+      ? "run"
+      : "none";
+
+  const sourceHealth = useMemo(() => buildSourceHealthFromRuns(runsForDoc), [runsForDoc]);
+
+  const alertAutoTriageKey = useMemo(() => {
+    if (!bffAgentsProxy || !impactVersionKey) return null;
+    const exec = impactExecutive?.trim();
+    const notes = impactMateriality?.trim();
+    if (!exec && impactScore == null && !notes) return null;
+    return impactSessionStorageKey || `${impactVersionKey}::stored`;
+  }, [
+    bffAgentsProxy,
+    impactVersionKey,
+    impactSessionStorageKey,
+    impactExecutive,
+    impactMateriality,
+    impactScore,
+  ]);
 
   useEffect(() => {
     setImpactError(null);
-  }, [impactVersionKey]);
+  }, [impactVersionKey, impactOutputLang]);
+
+  useEffect(() => {
+    if (appSurface !== "ingest_workspace") return;
+    const focus = loadIngestFeatureFocus();
+    if (!focus) return;
+    const sectionId = INGEST_FEATURE_SECTION_ID[focus];
+    const t = window.setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      clearIngestFeatureFocus();
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [appSurface, selectedUrl, runsForDoc.length]);
 
   const generateImpactSummary = useCallback(async () => {
     if (!currentRun?.documentUrl || !bffAgentsProxy) return;
     const key = currentRunStorageKey(currentRun);
     if (!key) return;
+    const sessionKey = `${key}::${impactOutputLang}`;
     const runPointId = currentRun.runPointId;
     if (!runPointId) {
       setImpactError(
@@ -474,6 +646,7 @@ export default function App() {
           .slice(0, 5)
           .map((r) => String(r.chunkText ?? ""))
           .filter(Boolean),
+        target_language: impactOutputLang,
       };
       const r = await fetch("/api/agents/v1/agents/summary", {
         method: "POST",
@@ -491,7 +664,7 @@ export default function App() {
       const stub = Boolean(data.stub);
       setImpactSessionByVersion((prev) => ({
         ...prev,
-        [key]: {
+        [sessionKey]: {
           llmSummary: llm,
           materialityNotes: mat,
           materialityScore: score ?? undefined,
@@ -504,7 +677,7 @@ export default function App() {
     } finally {
       setImpactGenerating(false);
     }
-  }, [bffAgentsProxy, currentRun]);
+  }, [bffAgentsProxy, currentRun, impactOutputLang]);
 
   const compareLatestVsPrevious = useCallback(() => {
     setCurrentIdx(0);
@@ -512,30 +685,31 @@ export default function App() {
     setTab("doc");
   }, []);
 
+  const ingestedDocumentUrls = useMemo(() => {
+    if (!runs) return [];
+    const s = new Set<string>();
+    for (const r of runs) {
+      const u = r.documentUrl;
+      if (u) s.add(u);
+    }
+    return [...s].sort();
+  }, [runs]);
+
   const tabTrigger =
     "rounded-lg px-4 py-2.5 text-sm font-medium text-zinc-600 outline-none transition data-[state=active]:bg-white data-[state=active]:text-zinc-900 data-[state=active]:shadow-sm";
 
-  const heroAuthSlot =
-    authPhase === "authed" && sessionUser ? (
-      <div className="flex flex-col items-stretch gap-2 sm:items-end">
-        <span className="rounded-full bg-white/10 px-2.5 py-1 text-center text-[11px] font-mono text-emerald-100/95">
-          {sessionUser}
-        </span>
-        <button
-          type="button"
-          onClick={() => void logout()}
-          className="rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/10"
-        >
-          Sign out
-        </button>
-      </div>
-    ) : undefined;
+  const showWorkspaceNav = authPhase === "authed" || authPhase === "open";
 
   const shell = (body: ReactNode) => (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-100 to-zinc-200/80">
-      <Uc1Hero rightSlot={heroAuthSlot} />
+    <AppShell
+      surface={appSurface}
+      onSurfaceChange={setAppSurface}
+      sessionUser={authPhase === "authed" ? sessionUser : null}
+      onLogout={authPhase === "authed" ? logout : undefined}
+      showWorkspaceNav={showWorkspaceNav}
+    >
       {body}
-    </div>
+    </AppShell>
   );
 
   if (authPhase === "loading") {
@@ -564,7 +738,7 @@ export default function App() {
       <div className="mx-auto flex max-w-lg flex-col items-center px-6 py-20">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
         <p className="mt-6 text-center text-sm font-medium text-zinc-700">Loading ingest runs from Qdrant…</p>
-        <p className="mt-1 text-center text-xs text-zinc-500">UC1 baseline library</p>
+        <p className="mt-1 text-center text-xs text-zinc-500">Ingest run library</p>
       </div>,
     );
   }
@@ -594,55 +768,157 @@ export default function App() {
     );
   }
 
-  if (!runs?.length) {
-    return shell(
-      <main className="mx-auto max-w-2xl px-6 py-16 text-center">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-10 shadow-sm">
-          <p className="text-sm font-medium text-zinc-800">No ingestion runs yet</p>
-          <p className="mt-2 text-sm text-zinc-600">
-            Run your UC1 n8n workflow once Qdrant collections exist — runs will appear here keyed by canonical{" "}
-            <code className="rounded bg-zinc-100 px-1 text-xs">documentUrl</code>.
-          </p>
-        </div>
-      </main>,
-    );
-  }
-
   return shell(
     <>
-      <main className="mx-auto max-w-[1600px] px-6 pb-24 pt-8">
+      {appSurface === "gli_hub" ? (
+        <GliIntelligenceHub
+          knownDocumentUrls={ingestedDocumentUrls}
+          agentsAvailable={bffAgentsProxy}
+          onOpenInIngestMonitor={(url) => {
+            setSelectedUrl(
+              documentUrlsMatch(url, DEMO_CANONICAL_PDF) ? DEMO_CANONICAL_PDF : url,
+            );
+            setCurrentIdx(0);
+            setBaselineIdx(1);
+            setAppSurface("ingest_workspace");
+          }}
+          onNavigateToIngestFeature={(featureId: IngestFeatureFocusId) => {
+            setSelectedUrl(DEMO_CANONICAL_PDF);
+            setCurrentIdx(0);
+            setBaselineIdx(1);
+            saveIngestFeatureFocus(featureId);
+            setAppSurface("ingest_workspace");
+          }}
+        />
+      ) : (
+      <IngestWorkspace>
       {selectedUrl ? (
         <div className="space-y-6">
+          <IngestContextBar
+            documentUrl={selectedUrl}
+            runCount={runsForDoc.length}
+            currentRunTimestamp={currentRun?.timestamp}
+            hitlStatus={hitlStatus}
+            sourceHealth={sourceHealth}
+            onOpenHub={() => setAppSurface("gli_hub")}
+          />
+          {(runs?.length ?? 0) === 0 ? (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 text-sm text-sky-950">
+              <p className="font-medium">No ingestion runs in Qdrant yet</p>
+              <p className="mt-2 text-sky-900/90">
+                Configure <code className="rounded bg-white/80 px-1 text-xs">QDRANT_*</code>, run the ingest workflow,
+                then pick a canonical URL below. The{" "}
+                <button
+                  type="button"
+                  className="font-medium text-emerald-800 underline decoration-emerald-400 underline-offset-2"
+                  onClick={() => setAppSurface("gli_hub")}
+                >
+                  GLI Intelligence hub
+                </button>{" "}
+                lists representative sources in the Source library.
+              </p>
+            </div>
+          ) : null}
           <SourceIdentityCard
             url={selectedUrl}
             runCount={runsForDoc.length}
             canCompareLatest={runsForDoc.length >= 2}
             onCompareLatest={compareLatestVsPrevious}
+            actionsSlot={
+              currentRun ? (
+                <RunEvidenceExportButton
+                  documentUrl={selectedUrl}
+                  baseline={baselineRun ? runToEvidenceSlice(baselineRun) : undefined}
+                  current={runToEvidenceSlice(currentRun)}
+                  impactDisplay={{
+                    executiveSummary: impactExecutive,
+                    materialityNotes: impactMateriality,
+                    materialityScore: impactScore,
+                    agentsModelId: impactModelId,
+                    stub: impactStubBadge,
+                  }}
+                />
+              ) : null
+            }
           />
 
+          {!bffAgentsProxy ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-medium">Agents API not proxied</p>
+              <p className="mt-1 text-xs leading-relaxed">
+                Open <code className="rounded bg-white/80 px-1 font-mono text-[11px]">http://127.0.0.1:9780</code> (BFF +
+                Vite proxy). Confirm{" "}
+                <code className="rounded bg-white/80 px-1 font-mono text-[11px]">AGENTS_URL=http://127.0.0.1:8000</code> in{" "}
+                <code className="rounded bg-white/80 px-1 font-mono text-[11px]">web/.env</code>, then restart{" "}
+                <code className="rounded bg-white/80 px-1 font-mono text-[11px]">./scripts/dev-up.sh</code>. Check{" "}
+                <code className="rounded bg-white/80 px-1 font-mono text-[11px]">/api/health</code> →{" "}
+                <code className="rounded bg-white/80 px-1 font-mono text-[11px]">agentsProxy: true</code>.
+              </p>
+            </div>
+          ) : null}
+
+          <IngestCadenceCallout />
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm ring-1 ring-zinc-100">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Document scope</h2>
+            <label className="mt-4 flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-zinc-800">Canonical document URL</span>
+              <select
+                className={selectClass}
+                value={docUrls.some((u) => documentUrlsMatch(u, selectedUrl)) ? selectedUrl : DEMO_CANONICAL_PDF}
+                onChange={(e) => {
+                  setSelectedUrl(e.target.value);
+                  setCurrentIdx(0);
+                  setBaselineIdx(1);
+                }}
+              >
+                {docUrls.map((u) => (
+                  <option key={u} value={u}>
+                    {normalizeDocumentUrl(u) === normalizeDocumentUrl(DEMO_CANONICAL_PDF)
+                      ? "★ POC regulation-14 (GitHub PDF)"
+                      : u.length > 72
+                        ? `${u.slice(0, 72)}…`
+                        : u}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-50"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(DEMO_CANONICAL_PDF);
+                }}
+              >
+                Copy POC URL
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900 hover:bg-emerald-100"
+                onClick={() => setSelectedUrl(DEMO_CANONICAL_PDF)}
+              >
+                Select POC URL
+              </button>
+            </div>
+            {runsForDoc.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-relaxed text-amber-950">
+                No Qdrant runs for this URL yet. Run the ingest workflow with{" "}
+                <code className="break-all rounded bg-white/80 px-1 font-mono text-[10px]">{DEMO_CANONICAL_PDF}</code>.
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-emerald-800">
+                {runsForDoc.length} ingest run{runsForDoc.length === 1 ? "" : "s"} indexed for this document.
+              </p>
+            )}
+          </section>
+
+          {runsForDoc.length > 0 ? (
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <div className="space-y-5">
               <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm ring-1 ring-zinc-100">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Compare ingests</h2>
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <label className="flex flex-col gap-1.5 text-sm md:col-span-3 lg:col-span-1">
-                    <span className="font-medium text-zinc-800">Canonical document URL</span>
-                    <select
-                      className={selectClass}
-                      value={selectedUrl}
-                      onChange={(e) => {
-                        setSelectedUrl(e.target.value);
-                        setCurrentIdx(0);
-                        setBaselineIdx(1);
-                      }}
-                    >
-                      {docUrls.map((u) => (
-                        <option key={u} value={u}>
-                          {u.length > 72 ? `${u.slice(0, 72)}…` : u}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <label className="flex flex-col gap-1.5 text-sm">
                     <span className="font-medium text-zinc-800">Current (newer)</span>
                     <select
@@ -677,9 +953,86 @@ export default function App() {
               <RunDigestGrid
                 baseline={baselineRun}
                 current={currentRun}
+                documentUrl={selectedUrl}
                 baselineLabel="Baseline ingest"
                 currentLabel="Current ingest"
               />
+
+              <div id="gli-ingest-version">
+                <VersionHistoryPanel
+                  documentUrl={selectedUrl}
+                  runs={runsForDoc}
+                  currentIdx={currentIdx}
+                  baselineIdx={baselineIdx}
+                  onSelectCurrent={setCurrentIdx}
+                  onSelectBaseline={setBaselineIdx}
+                />
+              </div>
+
+              <div id="gli-ingest-change">
+                <AutomatedChangeDetectionStrip
+                  baselineSummary={baselineRun?.summary}
+                  currentSummary={currentRun?.summary}
+                />
+              </div>
+
+              {(currentRun?.added?.length ?? 0) > 0 ? (
+                <div className="rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-sky-900">Research handoff</p>
+                  <p className="mt-1 text-sm leading-relaxed text-sky-950">
+                    Send ingest deltas to GLI hub for gap analysis (2.4) or cross-jurisdiction compare (2.3).
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
+                      onClick={() => {
+                        const text = (currentRun?.added ?? [])
+                          .map((a) => String(a.chunkText ?? "").trim())
+                          .filter(Boolean)
+                          .join("\n\n");
+                        if (text.length < 20) return;
+                        saveGapPrefillRegulatoryText(text);
+                        setAppSurface("gli_hub");
+                      }}
+                    >
+                      Open gap analysis in GLI hub
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-950 hover:bg-violet-100"
+                      onClick={() => {
+                        requestCrossPrefillFromIngest();
+                        setAppSurface("gli_hub");
+                      }}
+                    >
+                      Open cross-compare in GLI hub
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div id="gli-ingest-alert">
+                <AlertScoringBand
+                  materialityScore={impactScore ?? currentRun?.materialityScore}
+                  materialityNotes={impactMateriality ?? currentRun?.materialityNotes}
+                  executiveSummary={impactExecutive ?? undefined}
+                  chunkDelta={currentRun?.summary}
+                  sourceIngest={currentRun?.sourceIngest}
+                  agentsAvailable={bffAgentsProxy}
+                  autoTriageKey={alertAutoTriageKey}
+                />
+              </div>
+
+              <div
+                id="gli-ingest-reggpt"
+                className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-4 py-3 text-sm text-emerald-950"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">RegGPT</p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  Open the chat button (bottom-right) for grounded Q&amp;A on the selected document.
+                </p>
+              </div>
 
               <HitlReviewBar
                 status={hitlStatus}
@@ -691,18 +1044,19 @@ export default function App() {
                 saving={hitlSaving}
               />
 
-              <Tabs.Root value={tab} onValueChange={setTab} className="w-full">
+              <Tabs.Root
+                value={tab}
+                onValueChange={(v) => setTab(v as IngestTabId)}
+                className="w-full"
+              >
                 <Tabs.List className="inline-flex flex-wrap gap-1 rounded-xl bg-zinc-200/60 p-1 ring-1 ring-zinc-200/80">
                   {[
-                    { id: "doc", label: "Readable diff", hint: "UC1-004" },
-                    { id: "chunks", label: "Embedding delta", hint: "UC1-003" },
-                    { id: "now", label: "Live index", hint: "UC1-002" },
+                    { id: "doc", label: "Readable diff" },
+                    { id: "chunks", label: "Embedding delta" },
+                    { id: "now", label: "Live index" },
                   ].map((t) => (
                     <Tabs.Trigger key={t.id} value={t.id} className={tabTrigger}>
-                      <span className="block leading-tight">{t.label}</span>
-                      <span className="mt-0.5 block text-[10px] font-normal uppercase tracking-wide text-zinc-400">
-                        {t.hint}
-                      </span>
+                      {t.label}
                     </Tabs.Trigger>
                   ))}
                 </Tabs.List>
@@ -728,6 +1082,55 @@ export default function App() {
                       <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Readable diff</h2>
 
                       <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Presentation</p>
+                          <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-zinc-800">
+                              <input
+                                type="radio"
+                                name="diffPresentation"
+                                className="accent-violet-600"
+                                checked={diffPresentation === "text"}
+                                onChange={() => setDiffPresentation("text")}
+                              />
+                              Text view
+                            </label>
+                            <label
+                              className={`inline-flex items-center gap-2 ${canShowPdfDiff ? "cursor-pointer text-zinc-800" : "cursor-not-allowed text-zinc-400"}`}
+                              title={canShowPdfDiff ? undefined : "Re-run ingest with PDF storage for both runs"}
+                            >
+                              <input
+                                type="radio"
+                                name="diffPresentation"
+                                className="accent-violet-600"
+                                checked={diffPresentation === "pdf"}
+                                disabled={!canShowPdfDiff}
+                                onChange={() => setDiffPresentation("pdf")}
+                              />
+                              PDF view (bounding boxes)
+                            </label>
+                            <label
+                              className={`inline-flex items-center gap-2 ${canShowSectionAlign ? "cursor-pointer text-zinc-800" : "cursor-not-allowed text-zinc-400"}`}
+                              title={
+                                canShowSectionAlign
+                                  ? undefined
+                                  : "Re-ingest both versions with layout extraction enabled"
+                              }
+                            >
+                              <input
+                                type="radio"
+                                name="diffPresentation"
+                                className="accent-violet-600"
+                                checked={diffPresentation === "section"}
+                                disabled={!canShowSectionAlign}
+                                onChange={() => setDiffPresentation("section")}
+                              />
+                              By section (cross-page)
+                            </label>
+                          </div>
+                        </div>
+                        {diffPresentation === "text" ? (
+                        <>
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Diff style</p>
@@ -790,9 +1193,45 @@ export default function App() {
                             </select>
                           </label>
                         ) : null}
+                        </>
+                        ) : null}
                       </div>
 
-                      {viewMode === "side" && pageWiseLineDiff && (
+                      {diffPresentation === "section" &&
+                      canShowSectionAlign &&
+                      baselineRun &&
+                      currentRun &&
+                      selectedUrl ? (
+                        <SectionAlignedDiff
+                          documentUrl={selectedUrl}
+                          baselineVersionId={String(baselineRun.versionId ?? baselineRun.timestamp ?? "")}
+                          currentVersionId={String(currentRun.versionId ?? currentRun.timestamp ?? "")}
+                          baselinePageCount={baselineRun.pdfPageCount ?? baselineRun.layoutArtifact?.pageCount}
+                          currentPageCount={currentRun.pdfPageCount ?? currentRun.layoutArtifact?.pageCount}
+                          onOpenPdfAtPage={
+                            canShowPdfDiff
+                              ? (page, _side) => {
+                                  setPdfInitialPage(Math.max(0, page - 1));
+                                  setDiffPresentation("pdf");
+                                }
+                              : undefined
+                          }
+                        />
+                      ) : null}
+
+                      {diffPresentation === "pdf" && canShowPdfDiff && baselineRun && currentRun ? (
+                        <PdfPageDiffViewer
+                          documentUrl={selectedUrl}
+                          baselineVersionId={String(baselineRun.versionId ?? baselineRun.timestamp ?? "")}
+                          currentVersionId={String(currentRun.versionId ?? currentRun.timestamp ?? "")}
+                          changeRegions={pdfChangeRegions}
+                          baselinePageCount={baselineRun.pdfPageCount ?? 1}
+                          currentPageCount={currentRun.pdfPageCount ?? 1}
+                          initialPage={pdfInitialPage}
+                        />
+                      ) : null}
+
+                      {diffPresentation === "text" && viewMode === "side" && pageWiseLineDiff && (
                         <>
                           <h3 className="text-base font-semibold text-zinc-800">Side-by-side</h3>
           <p className="text-xs leading-relaxed text-zinc-500">
@@ -824,7 +1263,7 @@ export default function App() {
                           />
                         </>
                       )}
-                      {viewMode === "unified" && unifiedLinesFiltered && (
+                      {diffPresentation === "text" && viewMode === "unified" && unifiedLinesFiltered && (
                         <>
                           <h3 className="text-base font-semibold text-zinc-800">Unified (git-style)</h3>
                           <UnifiedDiffView lines={unifiedLinesFiltered} />
@@ -879,6 +1318,7 @@ export default function App() {
                           return (
                             <details
                               key={idx}
+                              id={typeof idxLabel === "number" ? chunkElementId(idxLabel) : undefined}
                               className="group rounded-xl border border-zinc-200/90 bg-white shadow-sm open:ring-1 open:ring-emerald-500/10"
                             >
                               <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-800 [&::-webkit-details-marker]:hidden">
@@ -913,29 +1353,58 @@ export default function App() {
               </Tabs.Root>
             </div>
 
-            <aside className="relative z-0 space-y-5 lg:sticky lg:top-6 lg:self-start">
+            <aside id="gli-ingest-impact" className="relative z-0 space-y-5 lg:sticky lg:top-6 lg:self-start">
               <ImpactSummaryCard
                 executiveSummary={impactExecutive}
                 materialityNotes={impactMateriality}
                 materialityScore={impactScore}
                 stub={impactStubBadge}
                 modelId={impactModelId}
+                persistenceMode={impactPersistenceMode}
                 agentsAvailable={bffAgentsProxy}
+                impactOutputLanguage={bffAgentsProxy ? impactOutputLang : undefined}
+                onImpactOutputLanguageChange={bffAgentsProxy ? setImpactOutputLang : undefined}
                 onGenerateImpact={bffAgentsProxy ? () => void generateImpactSummary() : undefined}
                 generatingImpact={impactGenerating}
                 impactError={impactError}
               />
             </aside>
           </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-6 text-sm text-amber-950 shadow-sm">
+              <p className="font-semibold">No Qdrant runs for this canonical URL yet</p>
+              <p className="mt-2 leading-relaxed">
+                Run the ingest workflow using this exact{" "}
+                <code className="rounded bg-white/70 px-1 text-xs">documentUrl</code>. Representative sources are listed
+                under <span className="font-medium">GLI Intelligence hub → Source library</span>.
+              </p>
+              <button
+                type="button"
+                className="mt-4 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                onClick={() => setAppSurface("gli_hub")}
+              >
+                Open GLI source library
+              </button>
+            </div>
+          )}
         </div>
       ) : null}
-      </main>
-      {selectedUrl ? (
+      </IngestWorkspace>
+      )}
+      {appSurface === "ingest_workspace" && selectedUrl ? (
         <AssistantChatDock
           documentUrl={selectedUrl}
+          sessionUser={sessionUser}
+          ingestedRunCount={runsForDoc.length}
           compareBaselineText={ingestCompareBaselineText}
           compareCurrentText={ingestCompareCurrentText}
           compareChunkChanges={ingestCompareChunkChanges}
+          onNavigateToChunk={navigateToChunk}
+          reggptHint={
+            runsForDoc.length === 0
+              ? "Ingest a run for this URL to enable grounded Q&A."
+              : undefined
+          }
         />
       ) : null}
     </>,

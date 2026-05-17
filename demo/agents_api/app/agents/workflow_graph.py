@@ -108,7 +108,7 @@ def _decide_branch(body: AgenticWorkflowRequest, orch: OrchestrateResponse) -> s
 async def _guardrails_input_node(state: WorkflowState) -> dict[str, Any]:
     body = state["request"]
     trace = state.get("trace")
-    canned = trivial_chat_reply(body.query)
+    canned = trivial_chat_reply(body.query, user_display_name=body.user_display_name)
     if canned is None:
         return {}
     if trace is not None:

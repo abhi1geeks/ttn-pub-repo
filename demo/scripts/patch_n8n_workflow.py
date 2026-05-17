@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+
+# Stable id so CLI re-import updates the same workflow in n8n (required: workflow_entity.id).
+WORKFLOW_ID = "dc4636e7-26fd-42b1-9e25-dbca8150fb57"
 
 ROOT = Path(__file__).resolve().parents[1]
 WF = ROOT / "n8n_workflow.json"
@@ -21,6 +26,9 @@ def main() -> None:
     compute_js = (FRAG / "compute_diff.js").read_text()
     build_point_js = (FRAG / "build_qdrant_point.js").read_text()
     provenance_js = (FRAG / "ingest_provenance.js").read_text()
+    save_pdf_js = (FRAG / "save_pdf_artifact.js").read_text()
+    merge_art_js = (FRAG / "merge_ingest_artifacts.js").read_text()
+    bedrock_embed_js = (FRAG / "bedrock_embed_chunk.js").read_text()
 
     for n in nodes:
         if n.get("name") == "Build & Write Run Record":
@@ -33,6 +41,14 @@ def main() -> None:
             n["parameters"]["jsCode"] = build_point_js
         if n.get("name") == "Code: Ingest Provenance":
             n["parameters"]["jsCode"] = provenance_js
+        if n.get("name") == "Code: Save PDF Artifact":
+            n["parameters"]["jsCode"] = save_pdf_js
+            n["parameters"]["mode"] = "runOnceForEachItem"
+        if n.get("name") == "Code: Merge Ingest Artifacts":
+            n["parameters"]["jsCode"] = merge_art_js
+            n["parameters"]["mode"] = "runOnceForAllItems"
+        if n.get("name") == "Bedrock: Embed Chunk (SigV4)":
+            n["parameters"]["jsCode"] = bedrock_embed_js
         if n.get("name") == "Download PDF":
             inner = (
                 n.setdefault("parameters", {})
@@ -45,17 +61,44 @@ def main() -> None:
         if n.get("name") == "Set Config":
             assigns = n["parameters"]["assignments"]["assignments"]
             names = {a["name"]: a for a in assigns}
-            for key in ("awsAccessKeyId", "awsSecretAccessKey"):
+            aws_expr = {
+                "awsAccessKeyId": "={{ $env.N8N_AWS_ACCESS_KEY_ID || $env.AWS_ACCESS_KEY_ID || '' }}",
+                "awsSecretAccessKey": "={{ $env.N8N_AWS_SECRET_ACCESS_KEY || $env.AWS_SECRET_ACCESS_KEY || '' }}",
+                "awsRegion": "={{ $env.AWS_REGION || 'us-east-1' }}",
+            }
+            for key, expr in aws_expr.items():
                 if key in names:
-                    names[key]["value"] = ""
+                    names[key]["value"] = expr
+                else:
+                    assigns.append(
+                        {
+                            "id": f"n-aws-{key}",
+                            "name": key,
+                            "value": expr,
+                            "type": "string",
+                        }
+                    )
+            # IAM user keys must not send a bogus session token (unevaluated ={{ }} breaks SigV4).
+            if "awsSessionToken" in names:
+                names["awsSessionToken"]["value"] = ""
+            else:
+                assigns.append(
+                    {
+                        "id": "n-st",
+                        "name": "awsSessionToken",
+                        "value": "",
+                        "type": "string",
+                    }
+                )
             extra = [
                 {"id": "n-qr", "name": "qdrantRunsCollection", "value": "regulatory_docs_runs", "type": "string"},
                 {"id": "n-qk", "name": "qdrantApiKey", "value": "", "type": "string"},
                 {"id": "n-ag", "name": "agentsApiUrl", "value": "http://agents:8000", "type": "string"},
-                {"id": "n-st", "name": "awsSessionToken", "value": "", "type": "string"},
                 {"id": "n-pl", "name": "productLine", "value": "default", "type": "string"},
                 {"id": "n-jd", "name": "jurisdiction", "value": "", "type": "string"},
                 {"id": "n-ed", "name": "effectiveDate", "value": "", "type": "string"},
+                {"id": "n-tl", "name": "targetLanguage", "value": "en", "type": "string"},
+                {"id": "n-ar", "name": "artifactsRoot", "value": "/data/regulatory", "type": "string"},
             ]
             existing = {a["name"] for a in assigns}
             for e in extra:
@@ -94,7 +137,7 @@ def main() -> None:
                 "url": "http://agents:8000/v1/agents/summary",
                 "sendBody": True,
                 "specifyBody": "json",
-                "jsonBody": '={{ JSON.stringify({ run_point_id: $json.runPointId, document_url: $json.runRecord.documentUrl, version_id: $json.runRecord.versionId || $json.runRecord.timestamp, document_hash: $json.runRecord.documentHash, summary: $json.runRecord.summary, added_preview: ($json.runRecord.added || []).slice(0,5).map(a => String(a.chunkText || "")), removed_preview: ($json.runRecord.removed || []).slice(0,5).map(r => String(r.chunkText || "")) }) }}',
+                "jsonBody": '={{ JSON.stringify({ run_point_id: $json.runPointId, document_url: $json.runRecord.documentUrl, version_id: $json.runRecord.versionId || $json.runRecord.timestamp, document_hash: $json.runRecord.documentHash, summary: $json.runRecord.summary, added_preview: ($json.runRecord.added || []).slice(0,5).map(a => String(a.chunkText || "")), removed_preview: ($json.runRecord.removed || []).slice(0,5).map(r => String(r.chunkText || "")), target_language: $(\'Set Config\').first().json.targetLanguage || \'en\' }) }}',
                 "options": {"response": {"response": {"neverError": True}}},
             },
             "id": "9f0e1a2b-3c4d-5678-9abc-def012345678",
@@ -122,6 +165,43 @@ def main() -> None:
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [-1184, 1024],
+        }
+    )
+    add_node(
+        {
+            "parameters": {"jsCode": save_pdf_js, "mode": "runOnceForEachItem"},
+            "id": "b2c3d4e5-f6a7-8901-bcde-savepdf01",
+            "name": "Code: Save PDF Artifact",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [-1056, 1024],
+        }
+    )
+    add_node(
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://agents:8000/v1/ingest/process",
+                "sendBody": True,
+                "specifyBody": "json",
+                "jsonBody": '={{ JSON.stringify({ documentUrl: $json.runRecord.documentUrl, versionId: $json.runRecord.versionId || $json.runRecord.timestamp, pdfPath: $json.runRecord.pdfArtifact.path, urlHash: $json.runRecord.urlHash }) }}',
+                "options": {"response": {"response": {"responseFormat": "json"}}},
+            },
+            "id": "c3d4e5f6-a7b8-9012-cdef-procart01",
+            "name": "HTTP: Process Ingest Artifacts",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [520, 1024],
+        }
+    )
+    add_node(
+        {
+            "parameters": {"jsCode": merge_art_js, "mode": "runOnceForAllItems"},
+            "id": "d4e5f6a7-b8c9-0123-def0-mergeart01",
+            "name": "Code: Merge Ingest Artifacts",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [740, 1024],
         }
     )
     doc_url = "https://raw.githubusercontent.com/abhi1geeks/ttn-pub-repo/main/regulation-14-as-of-02-26.pdf"
@@ -283,6 +363,20 @@ return {{
     con["Build & Write Run Record"] = {
         "main": [
             [
+                {"node": "HTTP: Process Ingest Artifacts", "type": "main", "index": 0},
+            ]
+        ]
+    }
+    con["HTTP: Process Ingest Artifacts"] = {
+        "main": [
+            [
+                {"node": "Code: Merge Ingest Artifacts", "type": "main", "index": 0},
+            ]
+        ]
+    }
+    con["Code: Merge Ingest Artifacts"] = {
+        "main": [
+            [
                 {"node": "HTTP: SummaryAgent", "type": "main", "index": 0},
             ]
         ]
@@ -361,6 +455,13 @@ return {{
     con["Code: Ingest Provenance"] = {
         "main": [
             [
+                {"node": "Code: Save PDF Artifact", "type": "main", "index": 0},
+            ]
+        ]
+    }
+    con["Code: Save PDF Artifact"] = {
+        "main": [
+            [
                 {"node": "Extract PDF Text", "type": "main", "index": 0},
             ]
         ]
@@ -399,7 +500,10 @@ return {{
         "Set Config": [x0 + gap_x, y_ingest],
         "Download PDF": [x0 + 2 * gap_x, y_ingest],
         "Code: Ingest Provenance": [x0 + 3 * gap_x, y_ingest],
+        "Code: Save PDF Artifact": [x0 + 3 * gap_x + 140, y_ingest],
         "Extract PDF Text": [x0 + 4 * gap_x, y_ingest],
+        "HTTP: Process Ingest Artifacts": [x0 + 9 * gap_x, y_ingest],
+        "Code: Merge Ingest Artifacts": [x0 + 10 * gap_x, y_ingest],
         "Chunk + Hash": [x0 + 5 * gap_x, y_ingest],
         "Qdrant: Scroll Existing IDs": [x0 + 6 * gap_x, y_ingest],
         "Compute Diff": [x0 + 7 * gap_x, y_ingest],
@@ -425,6 +529,15 @@ return {{
         nm = n.get("name")
         if nm in canvas_positions:
             n["position"] = canvas_positions[nm][:]
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    wf["id"] = WORKFLOW_ID
+    wf["name"] = "Regulatory PDF RAG (demo)"
+    wf["active"] = bool(wf.get("active", False))
+    wf.setdefault("settings", {"executionOrder": "v1"})
+    wf.setdefault("createdAt", now)
+    wf["updatedAt"] = now
+    wf.setdefault("versionId", str(uuid.uuid4()))
 
     WF.write_text(json.dumps(wf, indent=2))
     print("patched", WF)

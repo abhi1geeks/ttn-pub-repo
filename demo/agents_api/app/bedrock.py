@@ -14,6 +14,31 @@ def _use_stub() -> bool:
     return os.environ.get("AGENTS_STUB_LLM", "").lower() in ("1", "true", "yes")
 
 
+def bedrock_failure_message(text: str) -> bool:
+    """True when converse_text failed Bedrock (credentials, API), not demo stub mode."""
+    t = (text or "").strip()
+    return t.startswith("[stub-llm] Bedrock error:") or t.startswith("[stub-llm] boto3 unavailable")
+
+
+def bedrock_unavailable_user_message(raw: str) -> str:
+    """Plain-language hint when live Bedrock was requested but failed."""
+    t = (raw or "").strip()
+    if "Unable to locate credentials" in t:
+        return (
+            "Bedrock is enabled (AGENTS_STUB_LLM=0) but the agents service has no AWS credentials. "
+            "For Docker: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in demo/.env, "
+            "ensure agents uses env_file (.env), then recreate: ./scripts/up.sh --quick. "
+            "For local dev: ./scripts/dev-up.sh sources .env before uvicorn."
+        )
+    if "ExpiredToken" in t or "InvalidClientTokenId" in t:
+        return "Bedrock rejected the AWS credentials (expired or invalid). Update demo/.env and restart agents."
+    if t.startswith("[stub-llm] boto3 unavailable"):
+        return "boto3 is not available in the agents runtime. Rebuild the agents image or install dependencies."
+    if t.startswith("[stub-llm] Bedrock error:"):
+        return t.replace("[stub-llm] Bedrock error:", "Bedrock error:", 1).strip()
+    return t[:2000]
+
+
 def _client():
     try:
         import boto3  # noqa: WPS433
